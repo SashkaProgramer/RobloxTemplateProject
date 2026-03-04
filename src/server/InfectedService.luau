@@ -43,7 +43,9 @@ type InfectedAgent = {
 	patrolRadius: number,
 	loseTargetSeconds: number,
 	respawnSeconds: number,
+	maxHealth: number,
 	health: number,
+	hpBarFill: Frame,
 	alive: boolean,
 }
 
@@ -223,6 +225,76 @@ end
 local function syncVisuals(agent: InfectedAgent)
 	for _, entry in agent.visuals do
 		entry.part.CFrame = agent.root.CFrame * entry.offset
+	end
+end
+
+local function createHealthBar(root: BasePart, isBoss: boolean, titleText: string?): Frame
+	local hpGui = Instance.new("BillboardGui")
+	hpGui.Name = "HpBar"
+	hpGui.Size = if isBoss then UDim2.fromOffset(104, 18) else UDim2.fromOffset(74, 12)
+	hpGui.StudsOffset = if isBoss then Vector3.new(0, 9.6, 0) else Vector3.new(0, 4.75, 0)
+	hpGui.AlwaysOnTop = true
+	hpGui.MaxDistance = if isBoss then 180 else 120
+	hpGui.Parent = root
+
+	local bg = Instance.new("Frame")
+	bg.Name = "Bg"
+	bg.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+	bg.BackgroundTransparency = 0.28
+	bg.BorderSizePixel = 0
+	bg.Size = if titleText then UDim2.fromOffset(86, 6) else UDim2.fromOffset(62, 4)
+	bg.Position = if titleText then UDim2.fromOffset(8, 10) else UDim2.fromOffset(6, 4)
+	bg.Parent = hpGui
+
+	local bgCorner = Instance.new("UICorner")
+	bgCorner.CornerRadius = UDim.new(0, 3)
+	bgCorner.Parent = bg
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.BackgroundColor3 = Color3.fromRGB(228, 62, 62)
+	fill.BorderSizePixel = 0
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.Parent = bg
+
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0, 3)
+	fillCorner.Parent = fill
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(9, 9, 9)
+	stroke.Thickness = 1
+	stroke.Parent = bg
+
+	if titleText then
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Size = UDim2.fromOffset(94, 9)
+		title.Position = UDim2.fromOffset(4, 0)
+		title.Font = Enum.Font.GothamBold
+		title.TextScaled = false
+		title.TextSize = 8
+		title.TextColor3 = Color3.fromRGB(255, 212, 180)
+		title.TextStrokeTransparency = 0.5
+		title.Text = titleText
+		title.Parent = hpGui
+	end
+
+	return fill
+end
+
+local function updateHealthBar(agent: InfectedAgent)
+	local maxHealth = math.max(1, agent.maxHealth)
+	local ratio = math.clamp(agent.health / maxHealth, 0, 1)
+	agent.hpBarFill.Size = UDim2.fromScale(ratio, 1)
+
+	if ratio <= 0.2 then
+		agent.hpBarFill.BackgroundColor3 = Color3.fromRGB(244, 44, 44)
+	elseif ratio <= 0.55 then
+		agent.hpBarFill.BackgroundColor3 = Color3.fromRGB(255, 154, 58)
+	else
+		agent.hpBarFill.BackgroundColor3 = Color3.fromRGB(84, 214, 92)
 	end
 end
 
@@ -617,17 +689,18 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 
 		local bossLabel = Instance.new("BillboardGui")
 		bossLabel.Name = "BossLabel"
-		bossLabel.Size = UDim2.fromOffset(300, 70)
-		bossLabel.StudsOffset = Vector3.new(0, 12.5, 0)
+		bossLabel.Size = UDim2.fromOffset(118, 24)
+		bossLabel.StudsOffset = Vector3.new(0, 11.05, 0)
 		bossLabel.AlwaysOnTop = true
-		bossLabel.MaxDistance = 3000
+		bossLabel.MaxDistance = 180
 		bossLabel.Parent = root
 
 		local bossLabelText = Instance.new("TextLabel")
 		bossLabelText.BackgroundTransparency = 1
 		bossLabelText.Size = UDim2.fromScale(1, 1)
 		bossLabelText.Font = Enum.Font.GothamBlack
-		bossLabelText.TextScaled = true
+		bossLabelText.TextScaled = false
+		bossLabelText.TextSize = 19
 		bossLabelText.TextStrokeTransparency = 0.1
 		bossLabelText.TextStrokeColor3 = Color3.fromRGB(10, 2, 2)
 		bossLabelText.TextColor3 = Color3.fromRGB(255, 72, 72)
@@ -747,6 +820,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 	local groanPlaybackSpeedMax = if isBoss
 		then bossConfig.GroanPlaybackSpeedMax
 		else GameConfig.Infected.GroanPlaybackSpeedMax
+	local hpBarFill = createHealthBar(root, isBoss, nil)
 
 	local agent: InfectedAgent = {
 		id = unitId,
@@ -778,10 +852,13 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		patrolRadius = patrolRadius,
 		loseTargetSeconds = loseTargetSeconds,
 		respawnSeconds = respawnSeconds,
+		maxHealth = maxHealth,
 		health = maxHealth,
+		hpBarFill = hpBarFill,
 		alive = true,
 	}
 	syncVisuals(agent)
+	updateHealthBar(agent)
 	return agent
 end
 
@@ -862,7 +939,8 @@ local function applyDamageToInfected(agent: InfectedAgent, amount: number): bool
 	if not agent.alive then
 		return false
 	end
-	agent.health -= math.max(0, amount)
+	agent.health = math.max(0, agent.health - math.max(0, amount))
+	updateHealthBar(agent)
 	if agent.health <= 0 then
 		local deadId = agent.id
 		local deadArchetype = agent.archetype
@@ -883,13 +961,17 @@ end
 
 local function applyExplosionDamage(center: Vector3, radius: number, maxDamage: number): number
 	local hitCount = 0
+	local shockwaveBonus = math.max(0, GameConfig.Player.GrenadeShockwaveRadiusBonus)
+	local effectiveRadius = math.max(radius + 0.1, radius + shockwaveBonus)
+	local minShockDamage = math.max(1, GameConfig.Player.GrenadeShockwaveMinDamage)
 
 	for _, agent in agents do
 		if agent.alive and agent.model.Parent then
 			local distance = (agent.root.Position - center).Magnitude
-			if distance <= radius then
-				local falloff = 1 - (distance / radius)
-				local damage = math.max(8, maxDamage * falloff)
+			if distance <= effectiveRadius then
+				local falloff = 1 - (distance / effectiveRadius)
+				local innerScale = if distance <= radius then 1 else 0.65
+				local damage = math.max(minShockDamage, maxDamage * falloff * innerScale)
 				if applyDamageToInfected(agent, damage) then
 					hitCount += 1
 				end
