@@ -19,6 +19,7 @@ local setSprintingEvent = netFolder:WaitForChild(Net.Events.SetSprinting) :: Rem
 local scavengeResultEvent = netFolder:WaitForChild(Net.Events.ScavengeResult) :: RemoteEvent
 local medkitPickupEvent = netFolder:WaitForChild(Net.Events.MedkitPickup) :: RemoteEvent
 local aimUpdateEvent = netFolder:WaitForChild(Net.Events.AimUpdate) :: RemoteEvent
+local playerAttackEvent = netFolder:WaitForChild(Net.Events.PlayerAttack) :: RemoteEvent
 local attackFeedbackEvent = netFolder:WaitForChild(Net.Events.AttackFeedback) :: RemoteEvent
 
 local screenGui = Instance.new("ScreenGui")
@@ -89,7 +90,7 @@ local hpFrame = Instance.new("Frame")
 hpFrame.Name = "HpFrame"
 hpFrame.BackgroundColor3 = Color3.fromRGB(50, 18, 18)
 hpFrame.BackgroundTransparency = 0.2
-hpFrame.Size = UDim2.fromOffset(190, 44)
+hpFrame.Size = UDim2.fromOffset(220, 72)
 hpFrame.AnchorPoint = Vector2.new(1, 0)
 hpFrame.Position = UDim2.new(1, -20, 0, 20)
 hpFrame.Parent = screenGui
@@ -101,12 +102,25 @@ hpFrameCorner.Parent = hpFrame
 local hpLabel = Instance.new("TextLabel")
 hpLabel.Name = "HpLabel"
 hpLabel.BackgroundTransparency = 1
-hpLabel.Size = UDim2.fromScale(1, 1)
+hpLabel.Size = UDim2.fromOffset(200, 30)
+hpLabel.Position = UDim2.fromOffset(10, 8)
 hpLabel.Font = Enum.Font.GothamBold
-hpLabel.TextSize = 18
+hpLabel.TextSize = 30
 hpLabel.TextColor3 = Color3.fromRGB(255, 220, 220)
 hpLabel.Text = "HP: 0/0"
 hpLabel.Parent = hpFrame
+
+local hpStaminaLabel = Instance.new("TextLabel")
+hpStaminaLabel.Name = "TopStaminaLabel"
+hpStaminaLabel.BackgroundTransparency = 1
+hpStaminaLabel.Size = UDim2.fromOffset(200, 22)
+hpStaminaLabel.Position = UDim2.fromOffset(10, 42)
+hpStaminaLabel.Font = Enum.Font.GothamMedium
+hpStaminaLabel.TextSize = 16
+hpStaminaLabel.TextColor3 = Color3.fromRGB(236, 223, 191)
+hpStaminaLabel.TextXAlignment = Enum.TextXAlignment.Left
+hpStaminaLabel.Text = ("Stamina: %d/%d"):format(GameConfig.Player.MaxStamina, GameConfig.Player.MaxStamina)
+hpStaminaLabel.Parent = hpFrame
 
 local crosshair = Instance.new("Frame")
 crosshair.Name = "Crosshair"
@@ -200,6 +214,7 @@ crosshairRight.Parent = crosshair
 local sprinting = false
 local lastToastId = 0
 local launcherName = "Grenade Launcher"
+local swordName = "Jedi Lightsaber"
 local lastAimSent = 0
 local shoulderCameraOffset = Vector3.new(1.45, 0.65, 0)
 local crosshairPixelOffset = Vector2.new(0, -128)
@@ -259,16 +274,56 @@ player.CharacterAdded:Connect(function(character: Model)
 	connectCharacter(character)
 end)
 
-local function getEquippedLauncher(): Tool?
+local function isSupportedWeapon(tool: Tool?): boolean
+	return tool ~= nil and (tool.Name == launcherName or tool.Name == swordName)
+end
+
+local function getEquippedWeapon(): Tool?
 	local character = player.Character
 	if not character then
 		return nil
 	end
 	local tool = character:FindFirstChildOfClass("Tool")
+	if isSupportedWeapon(tool) then
+		return tool
+	end
+	return nil
+end
+
+local function getEquippedLauncher(): Tool?
+	local tool = getEquippedWeapon()
 	if tool and tool.Name == launcherName then
 		return tool
 	end
 	return nil
+end
+
+local function equipWeaponByName(weaponName: string)
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+
+	local inBackpack = backpack:FindFirstChild(weaponName)
+	if inBackpack and inBackpack:IsA("Tool") then
+		humanoid:EquipTool(inBackpack)
+		return
+	end
+
+	local inCharacter = character:FindFirstChild(weaponName)
+	if inCharacter and inCharacter:IsA("Tool") then
+		humanoid:EquipTool(inCharacter)
+	end
 end
 
 local function getHumanoid(): Humanoid?
@@ -351,11 +406,14 @@ stateUpdateEvent.OnClientEvent:Connect(function(data)
 	staminaLabel.Text = ("Stamina: %d"):format(stamina)
 	hungerLabel.Text = ("Hunger: %d"):format(hunger)
 	scrapLabel.Text = ("Scrap: %d"):format(scrap)
+	hpStaminaLabel.Text = ("Stamina: %d/%d"):format(stamina, GameConfig.Player.MaxStamina)
 
 	if stamina <= GameConfig.Player.LowStaminaThreshold then
 		staminaLabel.TextColor3 = Color3.fromRGB(235, 127, 127)
+		hpStaminaLabel.TextColor3 = Color3.fromRGB(255, 156, 156)
 	else
 		staminaLabel.TextColor3 = Color3.fromRGB(219, 219, 219)
+		hpStaminaLabel.TextColor3 = Color3.fromRGB(236, 223, 191)
 	end
 
 	sprinting = isSprinting
@@ -386,13 +444,22 @@ end)
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		pushAimUpdate(true)
-		local equippedLauncher = getEquippedLauncher()
-		if equippedLauncher then
-			equippedLauncher:Activate()
+		if getEquippedWeapon() then
+			playerAttackEvent:FireServer()
 		end
 	end
 
 	if gameProcessedEvent then
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.One then
+		equipWeaponByName(launcherName)
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Two then
+		equipWeaponByName(swordName)
 		return
 	end
 

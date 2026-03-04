@@ -37,10 +37,18 @@ LootService.Start(netFolder :: Folder)
 InfectedService.Start()
 
 local aimUpdateEvent = netFolder:WaitForChild(Net.Events.AimUpdate) :: RemoteEvent
+local playerAttackEvent = netFolder:WaitForChild(Net.Events.PlayerAttack) :: RemoteEvent
 local attackFeedbackEvent = netFolder:WaitForChild(Net.Events.AttackFeedback) :: RemoteEvent
 
-local function processPlayerAttack(player: Player, impactPosition: Vector3?)
+local function processGrenadeAttack(player: Player, impactPosition: Vector3?)
 	local didHit = InfectedService.TryPlayerGrenadeAttack(player, impactPosition)
+	attackFeedbackEvent:FireClient(player, {
+		hit = didHit,
+	})
+end
+
+local function processSwordAttack(player: Player)
+	local didHit = InfectedService.TryPlayerAttack(player)
 	attackFeedbackEvent:FireClient(player, {
 		hit = didHit,
 	})
@@ -66,6 +74,10 @@ aimUpdateEvent.OnServerEvent:Connect(function(player: Player, aimPoint: Vector3)
 	playerAimPoints[player] = aimPoint
 end)
 
+playerAttackEvent.OnServerEvent:Connect(function(player: Player)
+	WeaponService.TryFire(player)
+end)
+
 Players.PlayerRemoving:Connect(function(player: Player)
 	playerAimPoints[player] = nil
 end)
@@ -73,5 +85,7 @@ end)
 WeaponService.Start(function(player: Player): Vector3?
 	return playerAimPoints[player]
 end, function(player: Player, impactPosition: Vector3)
-	processPlayerAttack(player, impactPosition)
+	processGrenadeAttack(player, impactPosition)
+end, function(player: Player)
+	processSwordAttack(player)
 end)

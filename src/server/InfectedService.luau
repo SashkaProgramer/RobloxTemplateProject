@@ -44,7 +44,6 @@ local heartbeatConnection: RBXScriptConnection?
 local activeFolder: Folder?
 local nextAgentId = 1
 local playerLastAttackTime: { [Player]: number } = {}
-local playerLastGrenadeAttackTime: { [Player]: number } = {}
 
 local function getCharacterRoot(player: Player): BasePart?
 	local character = player.Character
@@ -583,13 +582,6 @@ function InfectedService.TryPlayerAttack(player: Player): boolean
 end
 
 function InfectedService.TryPlayerGrenadeAttack(player: Player, impactPosition: Vector3?): boolean
-	local now = time()
-	local lastAttack = playerLastGrenadeAttackTime[player]
-	if lastAttack and now - lastAttack < GameConfig.Player.GrenadeCooldown then
-		return false
-	end
-	playerLastGrenadeAttackTime[player] = now
-
 	local root = getCharacterRoot(player)
 	local humanoid = getHumanoid(player)
 	if not root or not humanoid or humanoid.Health <= 0 then

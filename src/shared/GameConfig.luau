@@ -2,7 +2,7 @@
 
 local GameConfig = {
 	Player = {
-		MaxStamina = 100,
+		MaxStamina = 300,
 		StaminaDrainPerSecond = 20,
 		StaminaRegenPerSecond = 12,
 		LowStaminaThreshold = 20,

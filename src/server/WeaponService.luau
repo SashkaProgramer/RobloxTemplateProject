@@ -13,9 +13,11 @@ local GameConfig = require(Shared:WaitForChild("GameConfig"))
 local WeaponService = {}
 
 local weaponName = "Grenade Launcher"
+local swordWeaponName = "Jedi Lightsaber"
 local weaponTag = "IsMeleeWeapon"
 local versionAttribute = "WeaponVersion"
-local weaponVersion = 8
+local weaponVersion = 9
+local swordWeaponVersion = 1
 local destructibleAttribute = "DestructibleByGrenade"
 local legacyWeaponNames = {
 	"Rusty Pipe",
@@ -24,6 +26,10 @@ local legacyWeaponNames = {
 }
 local rng = Random.new()
 local playerLastShotTime: { [Player]: number } = {}
+local playerLastSwordSwingTime: { [Player]: number } = {}
+local activeGetAimPointForPlayer: ((player: Player) -> Vector3?)?
+local activeOnGrenadeImpact: ((player: Player, impactPosition: Vector3) -> ())?
+local activeOnSwordAttack: ((player: Player) -> ())?
 
 local function isLegacyName(name: string): boolean
 	for _, legacyName in legacyWeaponNames do
@@ -42,7 +48,7 @@ local function createWeaponPart(
 	material: Enum.Material,
 	relative: CFrame,
 	handle: BasePart
-)
+): BasePart
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Size = size
@@ -59,6 +65,7 @@ local function createWeaponPart(
 	weld.Part0 = handle
 	weld.Part1 = part
 	weld.Parent = part
+	return part
 end
 
 local function playRecoilAnimation(tool: Tool)
@@ -88,6 +95,36 @@ local function playRecoilAnimation(tool: Tool)
 
 		tool.Grip = baseGrip
 		tool:SetAttribute("Recoiling", false)
+	end)
+end
+
+local function playSwordSwingAnimation(tool: Tool)
+	if tool:GetAttribute("Swinging") == true then
+		return
+	end
+
+	tool:SetAttribute("Swinging", true)
+	local baseGrip = tool.Grip
+
+	task.spawn(function()
+		for i = 1, 4 do
+			local alpha = i / 4
+			local swing = CFrame.new(-0.03 * alpha, -0.02 * alpha, 0.08 * alpha)
+				* CFrame.Angles(math.rad(12 * alpha), 0, math.rad(-34 * alpha))
+			tool.Grip = baseGrip * swing
+			task.wait(0.018)
+		end
+
+		for i = 1, 6 do
+			local alpha = i / 6
+			local swing = CFrame.new(-0.03 * (1 - alpha), -0.02 * (1 - alpha), 0.08 * (1 - alpha))
+				* CFrame.Angles(math.rad(12 * (1 - alpha)), 0, math.rad(-34 * (1 - alpha)))
+			tool.Grip = baseGrip * swing
+			task.wait(0.018)
+		end
+
+		tool.Grip = baseGrip
+		tool:SetAttribute("Swinging", false)
 	end)
 end
 
@@ -356,10 +393,62 @@ local function launchGrenadeProjectile(
 	end)
 end
 
-local function createGrenadeLauncherTool(
-	getAimPointForPlayer: (player: Player) -> Vector3?,
-	onAttack: (player: Player, impactPosition: Vector3) -> ()
-): Tool
+local function tryFireLauncher(player: Player, tool: Tool): boolean
+	local getAimPointForPlayer = activeGetAimPointForPlayer
+	local onGrenadeImpact = activeOnGrenadeImpact
+	if not getAimPointForPlayer or not onGrenadeImpact then
+		return false
+	end
+
+	local character = player.Character
+	if not character or not character:IsA("Model") then
+		return false
+	end
+
+	if tool.Parent ~= character then
+		return false
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return false
+	end
+
+	local now = time()
+	local lastShot = playerLastShotTime[player]
+	if lastShot and now - lastShot < GameConfig.Player.GrenadeCooldown then
+		return false
+	end
+	playerLastShotTime[player] = now
+
+	playRecoilAnimation(tool)
+
+	local direction = root.CFrame.LookVector
+	local provisionalOrigin = root.Position + Vector3.new(0, 1.45, 0) + direction * 1.4
+	local aimPoint = getAimPointForPlayer(player)
+	if aimPoint then
+		local aimVector = aimPoint - provisionalOrigin
+		if aimVector.Magnitude > 0.5 then
+			local candidateDirection = aimVector.Unit
+			if candidateDirection:Dot(root.CFrame.LookVector) > 0.15 then
+				direction = candidateDirection
+			end
+		end
+	end
+
+	local muzzle = tool:FindFirstChild("Muzzle")
+	local origin = if muzzle and muzzle:IsA("BasePart")
+		then muzzle.Position + direction * 0.25
+		else provisionalOrigin
+
+	createMuzzleFlash(origin, direction)
+	launchGrenadeProjectile(player, tool, origin, direction, function(impact: Vector3)
+		onGrenadeImpact(player, impact)
+	end)
+	return true
+end
+
+local function createGrenadeLauncherTool(): Tool
 	local tool = Instance.new("Tool")
 	tool.Name = weaponName
 	tool:SetAttribute(weaponTag, true)
@@ -535,69 +624,176 @@ local function createGrenadeLauncherTool(
 	)
 
 	tool.Activated:Connect(function()
-		local character = tool.Parent
-		if not character or not character:IsA("Model") then
+		local parent = tool.Parent
+		if not parent or not parent:IsA("Model") then
 			return
 		end
-		local player = Players:GetPlayerFromCharacter(character)
-		if not player then
+		local player = Players:GetPlayerFromCharacter(parent)
+		if player then
+			tryFireLauncher(player, tool)
+		end
+	end)
+
+	return tool
+end
+
+local function trySwingSword(player: Player, tool: Tool): boolean
+	local onSwordAttack = activeOnSwordAttack
+	if not onSwordAttack then
+		return false
+	end
+
+	local character = player.Character
+	if not character or not character:IsA("Model") then
+		return false
+	end
+
+	if tool.Parent ~= character then
+		return false
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+
+	local now = time()
+	local lastSwing = playerLastSwordSwingTime[player]
+	if lastSwing and now - lastSwing < GameConfig.Player.AttackCooldown then
+		return false
+	end
+	playerLastSwordSwingTime[player] = now
+
+	playSwordSwingAnimation(tool)
+	onSwordAttack(player)
+	return true
+end
+
+local function createSwordTool(): Tool
+	local tool = Instance.new("Tool")
+	tool.Name = swordWeaponName
+	tool:SetAttribute(weaponTag, true)
+	tool:SetAttribute(versionAttribute, swordWeaponVersion)
+	tool.RequiresHandle = true
+	tool.CanBeDropped = false
+	tool.ToolTip = "Glowing Jedi lightsaber"
+	tool.Grip = CFrame.new(0.08, -1.0, -0.18) * CFrame.Angles(0, math.rad(90), 0)
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.24, 0.9, 0.24)
+	handle.Color = Color3.fromRGB(40, 42, 46)
+	handle.Material = Enum.Material.Metal
+	handle.TopSurface = Enum.SurfaceType.Smooth
+	handle.BottomSurface = Enum.SurfaceType.Smooth
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+
+	createWeaponPart(
+		tool,
+		"HiltCore",
+		Vector3.new(0.18, 0.96, 0.18),
+		Color3.fromRGB(58, 60, 66),
+		Enum.Material.Metal,
+		CFrame.new(0, 0.05, 0),
+		handle
+	)
+	createWeaponPart(
+		tool,
+		"HiltEmitter",
+		Vector3.new(0.22, 0.12, 0.22),
+		Color3.fromRGB(130, 135, 145),
+		Enum.Material.Metal,
+		CFrame.new(0, 0.58, 0),
+		handle
+	)
+	createWeaponPart(
+		tool,
+		"GripBandA",
+		Vector3.new(0.2, 0.1, 0.2),
+		Color3.fromRGB(18, 18, 20),
+		Enum.Material.Metal,
+		CFrame.new(0, -0.18, 0),
+		handle
+	)
+	createWeaponPart(
+		tool,
+		"GripBandB",
+		Vector3.new(0.2, 0.1, 0.2),
+		Color3.fromRGB(18, 18, 20),
+		Enum.Material.Metal,
+		CFrame.new(0, -0.42, 0),
+		handle
+	)
+	createWeaponPart(
+		tool,
+		"Pommel",
+		Vector3.new(0.22, 0.16, 0.22),
+		Color3.fromRGB(115, 118, 126),
+		Enum.Material.Metal,
+		CFrame.new(0, -0.55, 0),
+		handle
+	)
+	local blade = createWeaponPart(
+		tool,
+		"Blade",
+		Vector3.new(0.18, 3.6, 0.18),
+		Color3.fromRGB(88, 232, 255),
+		Enum.Material.Neon,
+		CFrame.new(0, 2.42, 0),
+		handle
+	)
+	local bladeTip = createWeaponPart(
+		tool,
+		"BladeTip",
+		Vector3.new(0.18, 0.22, 0.18),
+		Color3.fromRGB(156, 244, 255),
+		Enum.Material.Neon,
+		CFrame.new(0, 4.33, 0),
+		handle
+	)
+	bladeTip.Shape = Enum.PartType.Ball
+
+	local bladeLight = Instance.new("PointLight")
+	bladeLight.Color = Color3.fromRGB(115, 236, 255)
+	bladeLight.Brightness = 1.9
+	bladeLight.Range = 10
+	bladeLight.Shadows = false
+	bladeLight.Parent = blade
+
+	tool.Activated:Connect(function()
+		local parent = tool.Parent
+		if not parent or not parent:IsA("Model") then
 			return
 		end
-
-		local root = character:FindFirstChild("HumanoidRootPart")
-		if not root or not root:IsA("BasePart") then
-			return
+		local player = Players:GetPlayerFromCharacter(parent)
+		if player then
+			trySwingSword(player, tool)
 		end
-
-		local now = time()
-		local lastShot = playerLastShotTime[player]
-		if lastShot and now - lastShot < GameConfig.Player.GrenadeCooldown then
-			return
-		end
-		playerLastShotTime[player] = now
-
-		playRecoilAnimation(tool)
-
-		local direction = root.CFrame.LookVector
-		local provisionalOrigin = root.Position + Vector3.new(0, 1.45, 0) + direction * 1.4
-		local aimPoint = getAimPointForPlayer(player)
-		if aimPoint then
-			local aimVector = aimPoint - provisionalOrigin
-			if aimVector.Magnitude > 0.5 then
-				local candidateDirection = aimVector.Unit
-				if candidateDirection:Dot(root.CFrame.LookVector) > 0.15 then
-					direction = candidateDirection
-				end
-			end
-		end
-
-		local muzzle = tool:FindFirstChild("Muzzle")
-		local origin = if muzzle and muzzle:IsA("BasePart")
-			then muzzle.Position + direction * 0.25
-			else provisionalOrigin
-
-		createMuzzleFlash(origin, direction)
-		launchGrenadeProjectile(player, tool, origin, direction, function(impact: Vector3)
-			onAttack(player, impact)
-		end)
 	end)
 
 	return tool
 end
 
 local function isCurrentWeapon(tool: Tool): boolean
-	if tool.Name ~= weaponName then
-		return false
+	if tool.Name == weaponName then
+		return tool:GetAttribute(versionAttribute) == weaponVersion
 	end
-	return tool:GetAttribute(versionAttribute) == weaponVersion
+	if tool.Name == swordWeaponName then
+		return tool:GetAttribute(versionAttribute) == swordWeaponVersion
+	end
+	return false
 end
 
 local function removeOutdatedWeapons(container: Instance)
 	for _, child in container:GetChildren() do
 		if child:IsA("Tool") then
+			local isManagedWeaponName = child.Name == weaponName or child.Name == swordWeaponName
+			local isTaggedWeapon = child:GetAttribute(weaponTag) == true
 			local shouldRemove = isLegacyName(child.Name)
-				or (child:GetAttribute(weaponTag) == true and child.Name ~= weaponName)
-				or (child.Name == weaponName and not isCurrentWeapon(child))
+				or (isManagedWeaponName and not isCurrentWeapon(child))
+				or (isTaggedWeapon and not isCurrentWeapon(child))
 
 			if shouldRemove then
 				child:Destroy()
@@ -606,21 +802,25 @@ local function removeOutdatedWeapons(container: Instance)
 	end
 end
 
-local function getOrCreateWeapon(
-	container: Instance,
-	getAimPointForPlayer: (player: Player) -> Vector3?,
-	onAttack: (player: Player, impactPosition: Vector3) -> ()
-): Tool
-	removeOutdatedWeapons(container)
-
-	local existing = container:FindFirstChild(weaponName)
-	if existing and existing:IsA("Tool") then
+local function ensureWeapon(container: Instance, toolName: string, createTool: () -> Tool): Tool
+	local existing = container:FindFirstChild(toolName)
+	if existing and existing:IsA("Tool") and isCurrentWeapon(existing) then
+		return existing
+	end
+	if existing then
 		existing:Destroy()
 	end
 
-	local tool = createGrenadeLauncherTool(getAimPointForPlayer, onAttack)
+	local tool = createTool()
 	tool.Parent = container
 	return tool
+end
+
+local function ensureLoadout(container: Instance): (Tool, Tool)
+	removeOutdatedWeapons(container)
+	local launcher = ensureWeapon(container, weaponName, createGrenadeLauncherTool)
+	local sword = ensureWeapon(container, swordWeaponName, createSwordTool)
+	return launcher, sword
 end
 
 local function equipForCharacter(player: Player, weapon: Tool)
@@ -631,27 +831,52 @@ local function equipForCharacter(player: Player, weapon: Tool)
 	end
 end
 
+function WeaponService.TryFire(player: Player): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+
+	local equipped = character:FindFirstChildOfClass("Tool")
+	if not equipped then
+		return false
+	end
+
+	if equipped.Name == weaponName then
+		return tryFireLauncher(player, equipped)
+	end
+	if equipped.Name == swordWeaponName then
+		return trySwingSword(player, equipped)
+	end
+	return false
+end
+
 function WeaponService.Start(
 	getAimPointForPlayer: (player: Player) -> Vector3?,
-	onAttack: (player: Player, impactPosition: Vector3) -> ()
+	onGrenadeImpact: (player: Player, impactPosition: Vector3) -> (),
+	onSwordAttack: (player: Player) -> ()
 )
+	activeGetAimPointForPlayer = getAimPointForPlayer
+	activeOnGrenadeImpact = onGrenadeImpact
+	activeOnSwordAttack = onSwordAttack
+
 	local function syncStarterPack()
 		removeOutdatedWeapons(StarterPack)
-		local existing = StarterPack:FindFirstChild(weaponName)
-		if existing and existing:IsA("Tool") then
-			existing:Destroy()
+		for _, name in { weaponName, swordWeaponName } do
+			local existing = StarterPack:FindFirstChild(name)
+			if existing and existing:IsA("Tool") then
+				existing:Destroy()
+			end
 		end
 	end
 
-	local function giveTool(player: Player)
-		player.CharacterAdded:Connect(function()
+	local function giveTools(player: Player)
+		player.CharacterAdded:Connect(function(character: Model)
 			local nextBackpack = player:WaitForChild("Backpack")
 			removeOutdatedWeapons(nextBackpack)
-			if player.Character then
-				removeOutdatedWeapons(player.Character)
-			end
-			local tool = getOrCreateWeapon(nextBackpack, getAimPointForPlayer, onAttack)
-			equipForCharacter(player, tool)
+			removeOutdatedWeapons(character)
+			local launcher = ensureLoadout(nextBackpack)
+			equipForCharacter(player, launcher)
 		end)
 
 		local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 10)
@@ -660,8 +885,8 @@ function WeaponService.Start(
 			if player.Character then
 				removeOutdatedWeapons(player.Character)
 			end
-			local tool = getOrCreateWeapon(backpack, getAimPointForPlayer, onAttack)
-			equipForCharacter(player, tool)
+			local launcher = ensureLoadout(backpack)
+			equipForCharacter(player, launcher)
 		end
 	end
 
@@ -669,11 +894,12 @@ function WeaponService.Start(
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		playerLastShotTime[player] = nil
+		playerLastSwordSwingTime[player] = nil
 	end)
 
-	Players.PlayerAdded:Connect(giveTool)
+	Players.PlayerAdded:Connect(giveTools)
 	for _, player in Players:GetPlayers() do
-		giveTool(player)
+		giveTools(player)
 	end
 end
 
