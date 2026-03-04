@@ -54,6 +54,8 @@ type InfectedAgent = {
 	maxHealth: number,
 	health: number,
 	hpBarFill: Frame,
+	walkCycle: number,
+	moveBlend: number,
 	alive: boolean,
 }
 
@@ -231,8 +233,72 @@ local function createBodyPart(
 end
 
 local function syncVisuals(agent: InfectedAgent)
+	local walkPhase = agent.walkCycle
+	local moveBlend = math.clamp(agent.moveBlend, 0, 1)
 	for _, entry in agent.visuals do
-		entry.part.CFrame = agent.root.CFrame * entry.offset
+		local offset = entry.offset
+
+		if agent.archetype == "baium" then
+			local stride = math.sin(walkPhase)
+			local counterStride = math.sin(walkPhase + math.pi)
+			local strideDouble = math.sin(walkPhase * 2)
+
+			if entry.part.Name == "BayumLeftLeg" then
+				local lift = math.max(0, counterStride) * 0.42 * moveBlend
+				offset = offset
+					* CFrame.new(0, lift, 0)
+					* CFrame.Angles(math.rad(22 * stride * moveBlend), 0, 0)
+			elseif entry.part.Name == "BayumRightLeg" then
+				local lift = math.max(0, stride) * 0.42 * moveBlend
+				offset = offset
+					* CFrame.new(0, lift, 0)
+					* CFrame.Angles(math.rad(22 * counterStride * moveBlend), 0, 0)
+			elseif entry.part.Name == "BayumLeftArm" or entry.part.Name == "BayumLeftForearm" then
+				offset = offset * CFrame.Angles(math.rad(-16 * counterStride * moveBlend), 0, 0)
+			elseif entry.part.Name == "BayumRightArm" or entry.part.Name == "BayumRightForearm" then
+				offset = offset * CFrame.Angles(math.rad(-16 * stride * moveBlend), 0, 0)
+			elseif entry.part.Name == "BayumTorso" then
+				local bob = math.abs(stride) * 0.19 * moveBlend
+				offset = offset
+					* CFrame.new(0, bob, 0)
+					* CFrame.Angles(math.rad(2.8 * strideDouble * moveBlend), 0, 0)
+			elseif entry.part.Name == "BayumHead" then
+				offset = offset * CFrame.Angles(math.rad(-3.2 * strideDouble * moveBlend), 0, 0)
+			elseif entry.part.Name == "BayumAuraRingOuter" then
+				offset = offset * CFrame.Angles(0, walkPhase * 0.65, 0)
+			elseif entry.part.Name == "BayumAuraRingInner" then
+				offset = offset * CFrame.Angles(0, -walkPhase * 0.85, 0)
+			end
+		else
+			local stride = math.sin(walkPhase)
+			local counterStride = math.sin(walkPhase + math.pi)
+			local strideDouble = math.sin(walkPhase * 2)
+
+			if entry.part.Name == "LeftLeg" then
+				local lift = math.max(0, counterStride) * 0.18 * moveBlend
+				offset = offset
+					* CFrame.new(0, lift, 0)
+					* CFrame.Angles(math.rad(24 * stride * moveBlend), 0, 0)
+			elseif entry.part.Name == "RightLeg" then
+				local lift = math.max(0, stride) * 0.18 * moveBlend
+				offset = offset
+					* CFrame.new(0, lift, 0)
+					* CFrame.Angles(math.rad(24 * counterStride * moveBlend), 0, 0)
+			elseif entry.part.Name == "LeftArm" then
+				offset = offset * CFrame.Angles(math.rad(-22 * counterStride * moveBlend), 0, 0)
+			elseif entry.part.Name == "RightArm" then
+				offset = offset * CFrame.Angles(math.rad(-22 * stride * moveBlend), 0, 0)
+			elseif entry.part.Name == "Torso" then
+				local bob = math.abs(stride) * 0.08 * moveBlend
+				offset = offset
+					* CFrame.new(0, bob, 0)
+					* CFrame.Angles(math.rad(2.5 * strideDouble * moveBlend), 0, math.rad(1.8 * stride * moveBlend))
+			elseif entry.part.Name == "Head" then
+				offset = offset * CFrame.Angles(math.rad(-4.5 * strideDouble * moveBlend), 0, 0)
+			end
+		end
+
+		entry.part.CFrame = agent.root.CFrame * offset
 	end
 end
 
@@ -478,7 +544,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 	local spawnMinDistance = if isBoss
 		then bossConfig.SpawnMinDistanceFromPlayer
 		else GameConfig.Infected.SpawnMinDistanceFromPlayer
-	local rootHeightOffset = if isBoss then 3.5 else 0
+	local rootHeightOffset = if isBoss then 3.5 else -1.9
 	local fixedBossSpawn = if isBoss then getFixedBossSpawnPosition() else nil
 	local spawnPos = if fixedBossSpawn
 		then fixedBossSpawn
@@ -943,6 +1009,8 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		maxHealth = maxHealth,
 		health = maxHealth,
 		hpBarFill = hpBarFill,
+		walkCycle = rng:NextNumber(0, math.pi * 2),
+		moveBlend = 0,
 		alive = true,
 	}
 	syncVisuals(agent)
@@ -1419,6 +1487,18 @@ local function updateAgent(agent: InfectedAgent, dt: number)
 	end
 
 	local nextPos = moveTowards(currentPos, destination, speed, dt)
+	local travelDistance = (nextPos - currentPos).Magnitude
+	local targetBlend = if dt > 0 and speed > 0
+		then math.clamp(travelDistance / math.max(0.001, speed * dt), 0, 1)
+		else 0
+	agent.moveBlend += (targetBlend - agent.moveBlend) * math.clamp(dt * 7.5, 0, 1)
+	local cycleDistanceScale = if agent.archetype == "baium" then 1.75 else 4.25
+	local idleCycleScale = if agent.archetype == "baium" then 0.6 else 0.22
+	if travelDistance > 0.001 then
+		agent.walkCycle += travelDistance * cycleDistanceScale
+	else
+		agent.walkCycle += dt * idleCycleScale
+	end
 	agent.root.Position = nextPos
 	updateFacing(agent, destination, dt)
 	syncVisuals(agent)
