@@ -15,6 +15,9 @@ type InfectedAgent = {
 	id: number,
 	model: Model,
 	root: BasePart,
+	groanSound: Sound,
+	groanCooldown: number,
+	wasPlayerNear: boolean,
 	leftEye: BasePart,
 	rightEye: BasePart,
 	visuals: { { part: BasePart, offset: CFrame } },
@@ -191,6 +194,74 @@ local function syncVisuals(agent: InfectedAgent)
 	end
 end
 
+local function randomGroanInterval(chasing: boolean): number
+	local minInterval = math.max(0.2, GameConfig.Infected.GroanIntervalMin)
+	local maxInterval = math.max(minInterval + 0.1, GameConfig.Infected.GroanIntervalMax)
+	if chasing then
+		local chaseMultiplier = math.max(0.2, GameConfig.Infected.GroanChaseIntervalMultiplier)
+		minInterval *= chaseMultiplier
+		maxInterval *= chaseMultiplier
+	end
+	return rng:NextNumber(minInterval, maxInterval)
+end
+
+local function playGroan(agent: InfectedAgent)
+	local sound = agent.groanSound
+	if sound.SoundId == "" then
+		return
+	end
+	local minSpeed = math.max(0.05, GameConfig.Infected.GroanPlaybackSpeedMin)
+	local maxSpeed = math.max(minSpeed + 0.01, GameConfig.Infected.GroanPlaybackSpeedMax)
+	sound.PlaybackSpeed = rng:NextNumber(minSpeed, maxSpeed)
+	if sound.IsPlaying then
+		sound:Stop()
+	end
+	sound:Play()
+end
+
+local function isPlayerNear(agent: InfectedAgent, maxDistance: number): boolean
+	if maxDistance <= 0 then
+		return false
+	end
+	local fromPos = agent.root.Position
+	for _, player in Players:GetPlayers() do
+		local root = getCharacterRoot(player)
+		local humanoid = getHumanoid(player)
+		if root and humanoid and humanoid.Health > 0 then
+			if (root.Position - fromPos).Magnitude <= maxDistance then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function updateGroan(agent: InfectedAgent, dt: number)
+	agent.groanCooldown = math.max(0, agent.groanCooldown - dt)
+
+	local proximityRange = math.max(0, GameConfig.Infected.GroanProximityRange)
+	local proximityCooldown = math.max(0.2, GameConfig.Infected.GroanProximityCooldown)
+	local nearPlayer = isPlayerNear(agent, proximityRange)
+
+	if nearPlayer and not agent.wasPlayerNear then
+		agent.groanCooldown = 0
+	end
+	agent.wasPlayerNear = nearPlayer
+
+	if agent.groanCooldown > 0 then
+		if nearPlayer then
+			agent.groanCooldown = math.min(agent.groanCooldown, proximityCooldown)
+		end
+		return
+	end
+	playGroan(agent)
+	if nearPlayer then
+		agent.groanCooldown = proximityCooldown
+	else
+		agent.groanCooldown = randomGroanInterval(agent.chaseTarget ~= nil)
+	end
+end
+
 local function getPlayerSpawnPosition(): Vector3
 	local spawn = Workspace:FindFirstChild(playerSpawnName)
 	if spawn and spawn:IsA("BasePart") then
@@ -317,10 +388,34 @@ local function spawnInfected(unitId: number, parent: Folder): InfectedAgent
 	leftEye.Shape = Enum.PartType.Ball
 	rightEye.Shape = Enum.PartType.Ball
 
+	local groanSound = Instance.new("Sound")
+	groanSound.Name = "Groan"
+	groanSound.SoundId = GameConfig.Infected.GroanSoundId
+	groanSound.Volume = GameConfig.Infected.GroanVolume
+	groanSound.RollOffMode = Enum.RollOffMode.InverseTapered
+	groanSound.RollOffMinDistance = GameConfig.Infected.GroanMinDistance
+	groanSound.RollOffMaxDistance = GameConfig.Infected.GroanMaxDistance
+	groanSound.Parent = root
+
+	local reverb = Instance.new("ReverbSoundEffect")
+	reverb.DecayTime = 1.8
+	reverb.Density = 0.45
+	reverb.Diffusion = 0.72
+	reverb.DryLevel = -1
+	reverb.WetLevel = -3
+	reverb.Parent = groanSound
+
+	local distortion = Instance.new("DistortionSoundEffect")
+	distortion.Level = 0.12
+	distortion.Parent = groanSound
+
 	local agent: InfectedAgent = {
 		id = unitId,
 		model = model,
 		root = root,
+		groanSound = groanSound,
+		groanCooldown = rng:NextNumber(0.6, 2.3),
+		wasPlayerNear = false,
 		leftEye = leftEye,
 		rightEye = rightEye,
 		visuals = {
@@ -352,6 +447,9 @@ local function markDead(agent: InfectedAgent)
 	agent.alive = false
 	agent.queuedAttackTarget = nil
 	agent.attackWindup = 0
+	if agent.groanSound.IsPlaying then
+		agent.groanSound:Stop()
+	end
 
 	for _, entry in agent.visuals do
 		local source = entry.part
@@ -516,6 +614,7 @@ local function updateAgent(agent: InfectedAgent, dt: number)
 			agent.chaseTarget = nil
 		end
 	end
+	updateGroan(agent, dt)
 
 	if not agent.chaseTarget and agent.attackWindup <= 0 then
 		setAttackEyes(agent, false)
