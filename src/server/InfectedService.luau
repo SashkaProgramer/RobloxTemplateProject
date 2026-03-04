@@ -38,6 +38,14 @@ type InfectedAgent = {
 	attackRange: number,
 	attackWindupSeconds: number,
 	damageCooldownSeconds: number,
+	magicDamage: number,
+	magicRange: number,
+	magicCooldown: number,
+	magicCooldownSeconds: number,
+	magicWindup: number,
+	magicWindupSeconds: number,
+	magicBlastRadius: number,
+	queuedMagicTarget: Player?,
 	wanderSpeed: number,
 	chaseSpeed: number,
 	patrolRadius: number,
@@ -633,6 +641,71 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		coreLight.Range = 16
 		coreLight.Parent = heartCore
 
+		local auraRingOuter = createBodyPart(
+			model,
+			"BayumAuraRingOuter",
+			Vector3.new(16, 0.22, 16),
+			Color3.fromRGB(255, 72, 72),
+			Enum.Material.Neon
+		)
+		auraRingOuter.Shape = Enum.PartType.Cylinder
+		auraRingOuter.Transparency = 0.42
+
+		local auraRingInner = createBodyPart(
+			model,
+			"BayumAuraRingInner",
+			Vector3.new(10, 0.2, 10),
+			Color3.fromRGB(255, 168, 78),
+			Enum.Material.Neon
+		)
+		auraRingInner.Shape = Enum.PartType.Cylinder
+		auraRingInner.Transparency = 0.5
+
+		local bossAuraLight = Instance.new("PointLight")
+		bossAuraLight.Name = "BossAuraLight"
+		bossAuraLight.Color = Color3.fromRGB(255, 102, 92)
+		bossAuraLight.Brightness = 3.1
+		bossAuraLight.Range = 28
+		bossAuraLight.Parent = root
+
+		local auraAttachment = Instance.new("Attachment")
+		auraAttachment.Name = "BossAuraAttachment"
+		auraAttachment.Position = Vector3.new(0, 2.2, 0)
+		auraAttachment.Parent = root
+
+		local auraEmitter = Instance.new("ParticleEmitter")
+		auraEmitter.Name = "BossAuraEmitter"
+		auraEmitter.Rate = 42
+		auraEmitter.Lifetime = NumberRange.new(0.45, 0.85)
+		auraEmitter.Speed = NumberRange.new(1.6, 5.5)
+		auraEmitter.SpreadAngle = Vector2.new(360, 38)
+		auraEmitter.Rotation = NumberRange.new(0, 360)
+		auraEmitter.RotSpeed = NumberRange.new(-140, 140)
+		auraEmitter.Acceleration = Vector3.new(0, 2.8, 0)
+		auraEmitter.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.42),
+			NumberSequenceKeypoint.new(1, 0.08),
+		})
+		auraEmitter.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.18),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		auraEmitter.Color = ColorSequence.new(
+			Color3.fromRGB(255, 86, 86),
+			Color3.fromRGB(255, 190, 120)
+		)
+		auraEmitter.LightEmission = 0.75
+		auraEmitter.Parent = auraAttachment
+
+		local bossHighlight = Instance.new("Highlight")
+		bossHighlight.Name = "BossHighlight"
+		bossHighlight.FillTransparency = 0.84
+		bossHighlight.FillColor = Color3.fromRGB(255, 74, 74)
+		bossHighlight.OutlineColor = Color3.fromRGB(255, 158, 124)
+		bossHighlight.OutlineTransparency = 0.12
+		bossHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		bossHighlight.Parent = model
+
 		leftEye = createBodyPart(
 			model,
 			"BayumLeftEye",
@@ -667,6 +740,8 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		addVisual(visuals, capeLower, CFrame.new(0, -0.45, 2.45) * CFrame.Angles(math.rad(-5), 0, 0))
 		addVisual(visuals, crownBand, CFrame.new(0, 7.28, -0.25))
 		addVisual(visuals, heartCore, CFrame.new(0, 1.95, -2.34))
+		addVisual(visuals, auraRingOuter, CFrame.new(0, -5.95, 0))
+		addVisual(visuals, auraRingInner, CFrame.new(0, -5.87, 0))
 		addVisual(visuals, leftEye, CFrame.new(-0.62, 6.25, -1.95))
 		addVisual(visuals, rightEye, CFrame.new(0.62, 6.25, -1.95))
 
@@ -808,6 +883,11 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 	local attackRange = if isBoss then bossConfig.AttackRange else GameConfig.Infected.AttackRange
 	local attackWindupSeconds = if isBoss then bossConfig.AttackWindupSeconds else GameConfig.Infected.AttackWindupSeconds
 	local damageCooldownSeconds = if isBoss then bossConfig.DamageCooldown else GameConfig.Infected.DamageCooldown
+	local magicDamage = if isBoss then bossConfig.MagicDamage else 0
+	local magicRange = if isBoss then bossConfig.MagicRange else 0
+	local magicCooldownSeconds = if isBoss then bossConfig.MagicCooldown else 0
+	local magicWindupSeconds = if isBoss then bossConfig.MagicWindupSeconds else 0
+	local magicBlastRadius = if isBoss then bossConfig.MagicBlastRadius else 0
 	local wanderSpeed = if isBoss then bossConfig.WanderSpeed else GameConfig.Infected.WanderSpeed
 	local chaseSpeed = if isBoss then bossConfig.ChaseSpeed else GameConfig.Infected.ChaseSpeed
 	local patrolRadius = if isBoss then bossConfig.PatrolRadius else GameConfig.Infected.PatrolRadius
@@ -847,6 +927,14 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		attackRange = attackRange,
 		attackWindupSeconds = attackWindupSeconds,
 		damageCooldownSeconds = damageCooldownSeconds,
+		magicDamage = magicDamage,
+		magicRange = magicRange,
+		magicCooldown = 0,
+		magicCooldownSeconds = magicCooldownSeconds,
+		magicWindup = 0,
+		magicWindupSeconds = magicWindupSeconds,
+		magicBlastRadius = magicBlastRadius,
+		queuedMagicTarget = nil,
 		wanderSpeed = wanderSpeed,
 		chaseSpeed = chaseSpeed,
 		patrolRadius = patrolRadius,
@@ -865,7 +953,9 @@ end
 local function markDead(agent: InfectedAgent)
 	agent.alive = false
 	agent.queuedAttackTarget = nil
+	agent.queuedMagicTarget = nil
 	agent.attackWindup = 0
+	agent.magicWindup = 0
 	if agent.groanSound.IsPlaying then
 		agent.groanSound:Stop()
 	end
@@ -980,6 +1070,74 @@ local function applyExplosionDamage(center: Vector3, radius: number, maxDamage: 
 	end
 
 	return hitCount
+end
+
+local function emitBossMagicCastFx(fromPos: Vector3, impactPos: Vector3)
+	local direction = impactPos - fromPos
+	local distance = math.max(0.8, direction.Magnitude)
+	local mid = fromPos + direction * 0.5
+
+	local beam = Instance.new("Part")
+	beam.Name = "BayumMagicBeam"
+	beam.Size = Vector3.new(0.5, 0.5, distance)
+	beam.Material = Enum.Material.Neon
+	beam.Color = Color3.fromRGB(255, 106, 120)
+	beam.Transparency = 0.14
+	beam.Anchored = true
+	beam.CanCollide = false
+	beam.CanQuery = false
+	beam.CanTouch = false
+	beam.CFrame = CFrame.lookAt(mid, impactPos)
+	beam.Parent = Workspace
+	Debris:AddItem(beam, 0.16)
+
+	local flash = Instance.new("Part")
+	flash.Name = "BayumMagicFlash"
+	flash.Shape = Enum.PartType.Ball
+	flash.Size = Vector3.new(1.8, 1.8, 1.8)
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(255, 140, 144)
+	flash.Transparency = 0.15
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CanQuery = false
+	flash.CanTouch = false
+	flash.CFrame = CFrame.new(fromPos)
+	flash.Parent = Workspace
+	Debris:AddItem(flash, 0.18)
+
+	local impact = Instance.new("Part")
+	impact.Name = "BayumMagicImpact"
+	impact.Shape = Enum.PartType.Ball
+	impact.Size = Vector3.new(4.8, 4.8, 4.8)
+	impact.Material = Enum.Material.Neon
+	impact.Color = Color3.fromRGB(255, 86, 92)
+	impact.Transparency = 0.2
+	impact.Anchored = true
+	impact.CanCollide = false
+	impact.CanQuery = false
+	impact.CanTouch = false
+	impact.CFrame = CFrame.new(impactPos)
+	impact.Parent = Workspace
+	Debris:AddItem(impact, 0.2)
+end
+
+local function applyBossMagicDamage(center: Vector3, radius: number, maxDamage: number)
+	local safeRadius = math.max(1, radius)
+	local minDamage = math.max(4, maxDamage * 0.4)
+
+	for _, player in Players:GetPlayers() do
+		local root = getCharacterRoot(player)
+		local humanoid = getHumanoid(player)
+		if root and humanoid and humanoid.Health > 0 then
+			local distance = (root.Position - center).Magnitude
+			if distance <= safeRadius then
+				local falloff = 1 - (distance / safeRadius)
+				local damage = math.max(minDamage, maxDamage * falloff)
+				humanoid:TakeDamage(damage)
+			end
+		end
+	end
 end
 
 local function emitSwordHitBlood(position: Vector3, fromDirection: Vector3)
@@ -1130,6 +1288,8 @@ end
 local function processAttack(agent: InfectedAgent, dt: number)
 	agent.damageCooldown = math.max(0, agent.damageCooldown - dt)
 	agent.attackWindup = math.max(0, agent.attackWindup - dt)
+	agent.magicCooldown = math.max(0, agent.magicCooldown - dt)
+	agent.magicWindup = math.max(0, agent.magicWindup - dt)
 
 	local queuedTarget = agent.queuedAttackTarget
 	if queuedTarget and agent.attackWindup <= 0 then
@@ -1146,10 +1306,33 @@ local function processAttack(agent: InfectedAgent, dt: number)
 			end
 		end
 		agent.queuedAttackTarget = nil
-		setAttackEyes(agent, false)
+		if not agent.queuedMagicTarget and agent.magicWindup <= 0 then
+			setAttackEyes(agent, false)
+		end
 	end
 
-	if agent.damageCooldown > 0 or agent.attackWindup > 0 then
+	local queuedMagicTarget = agent.queuedMagicTarget
+	if queuedMagicTarget and agent.magicWindup <= 0 then
+		local targetRoot = getCharacterRoot(queuedMagicTarget)
+		local targetHumanoid = getHumanoid(queuedMagicTarget)
+		if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+			local fromPos = agent.root.Position + Vector3.new(0, 4.8, 0)
+			local impactPos = targetRoot.Position + Vector3.new(0, 1.4, 0)
+			local distance = (targetRoot.Position - agent.root.Position).Magnitude
+			local seen = canSeeTarget(fromPos, agent.root.CFrame.LookVector, targetRoot, agent.model)
+			if distance <= agent.magicRange + 2 and seen then
+				emitBossMagicCastFx(fromPos, impactPos)
+				applyBossMagicDamage(impactPos, agent.magicBlastRadius, agent.magicDamage)
+				agent.magicCooldown = agent.magicCooldownSeconds
+			end
+		end
+		agent.queuedMagicTarget = nil
+		if not agent.queuedAttackTarget and agent.attackWindup <= 0 then
+			setAttackEyes(agent, false)
+		end
+	end
+
+	if agent.damageCooldown > 0 or agent.attackWindup > 0 or agent.magicWindup > 0 then
 		return
 	end
 
@@ -1163,7 +1346,24 @@ local function processAttack(agent: InfectedAgent, dt: number)
 		return
 	end
 
-	if (root.Position - agent.root.Position).Magnitude <= agent.attackRange then
+	local distance = (root.Position - agent.root.Position).Magnitude
+	if agent.archetype == "baium"
+		and agent.magicRange > 0
+		and agent.magicCooldown <= 0
+		and distance > agent.attackRange * 0.95
+		and distance <= agent.magicRange
+	then
+		local fromPos = agent.root.Position + Vector3.new(0, 4.8, 0)
+		local seen = canSeeTarget(fromPos, agent.root.CFrame.LookVector, root, agent.model)
+		if seen then
+			agent.magicWindup = agent.magicWindupSeconds
+			agent.queuedMagicTarget = chaseTarget
+			setAttackEyes(agent, true)
+			return
+		end
+	end
+
+	if distance <= agent.attackRange then
 		agent.attackWindup = agent.attackWindupSeconds
 		agent.queuedAttackTarget = chaseTarget
 		setAttackEyes(agent, true)
@@ -1192,7 +1392,7 @@ local function updateAgent(agent: InfectedAgent, dt: number)
 	end
 	updateGroan(agent, dt)
 
-	if not agent.chaseTarget and agent.attackWindup <= 0 then
+	if not agent.chaseTarget and agent.attackWindup <= 0 and agent.magicWindup <= 0 then
 		setAttackEyes(agent, false)
 	end
 
@@ -1213,6 +1413,9 @@ local function updateAgent(agent: InfectedAgent, dt: number)
 
 	if agent.attackWindup > 0 then
 		speed *= 0.2
+	end
+	if agent.magicWindup > 0 then
+		speed *= 0.35
 	end
 
 	local nextPos = moveTowards(currentPos, destination, speed, dt)

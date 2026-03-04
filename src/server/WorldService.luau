@@ -124,22 +124,44 @@ local function ensureDecorFolder(): Folder
 	return folder
 end
 
+local function createDecorPart(
+	parent: Folder,
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	material: Enum.Material,
+	canCollide: boolean
+): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.CanCollide = canCollide
+	part.Material = material
+	part.Color = color
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part:SetAttribute(destructibleAttribute, true)
+	part.Parent = parent
+	return part
+end
+
 local function createMossPatch(anchor: BasePart, offset: Vector3, size: Vector3, parent: Folder)
-	local patch = Instance.new("Part")
-	patch.Name = "MossPatch"
-	patch.Size = size
-	patch.Anchored = true
-	patch.CanCollide = false
-	patch.Material = Enum.Material.Grass
-	patch.Color = Color3.fromRGB(
-		rng:NextInteger(56, 72),
-		rng:NextInteger(82, 104),
-		rng:NextInteger(49, 64)
+	createDecorPart(
+		parent,
+		"MossPatch",
+		size,
+		anchor.CFrame * CFrame.new(offset) * CFrame.Angles(math.rad(rng:NextNumber(-8, 8)), rng:NextNumber(0, math.pi * 2), 0),
+		Color3.fromRGB(
+			rng:NextInteger(56, 72),
+			rng:NextInteger(82, 104),
+			rng:NextInteger(49, 64)
+		),
+		Enum.Material.Grass,
+		false
 	)
-	patch.CFrame = anchor.CFrame
-		* CFrame.new(offset)
-		* CFrame.Angles(math.rad(rng:NextNumber(-8, 8)), rng:NextNumber(0, math.pi * 2), 0)
-	patch.Parent = parent
 end
 
 local function createFernClump(center: Vector3, parent: Folder, intensity: number)
@@ -161,6 +183,7 @@ local function createFernClump(center: Vector3, parent: Folder, intensity: numbe
 		local basePos = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
 		leaf.CFrame = CFrame.new(basePos + Vector3.new(0, height * 0.5, 0))
 			* CFrame.Angles(math.rad(rng:NextNumber(12, 46)), angle, math.rad(rng:NextNumber(-8, 8)))
+		leaf:SetAttribute(destructibleAttribute, true)
 		leaf.Parent = parent
 	end
 end
@@ -209,6 +232,126 @@ local function createSafeFallbackBlock(name: string, size: Vector3, position: Ve
 	block.Parent = Workspace
 end
 
+local function isNearSpawn(position: Vector3, spawnPos: Vector3, radius: number): boolean
+	return (Vector3.new(position.X, 0, position.Z) - Vector3.new(spawnPos.X, 0, spawnPos.Z)).Magnitude < radius
+end
+
+local function createDestructibleTrees(parent: Folder, spawnPos: Vector3)
+	for _ = 1, 44 do
+		local basePos = Vector3.new(rng:NextNumber(-260, 260), 3, rng:NextNumber(-260, 260))
+		if not isNearSpawn(basePos, spawnPos, 34) then
+			local trunkHeight = rng:NextNumber(11, 24)
+			local trunkRadius = rng:NextNumber(1.1, 1.9)
+			local tilt = CFrame.Angles(math.rad(rng:NextNumber(-4, 4)), math.rad(rng:NextNumber(0, 360)), math.rad(rng:NextNumber(-4, 4)))
+			local trunk = createDecorPart(
+				parent,
+				"TreeTrunk",
+				Vector3.new(trunkRadius, trunkHeight, trunkRadius),
+				CFrame.new(basePos + Vector3.new(0, trunkHeight * 0.5, 0)) * tilt,
+				Color3.fromRGB(rng:NextInteger(58, 79), rng:NextInteger(44, 60), rng:NextInteger(28, 43)),
+				Enum.Material.Wood,
+				true
+			)
+
+			local canopyCount = rng:NextInteger(4, 7)
+			for _ = 1, canopyCount do
+				local canopySize = rng:NextNumber(3.8, 8.4)
+				local offset = Vector3.new(
+					rng:NextNumber(-2.2, 2.2),
+					trunkHeight * rng:NextNumber(0.66, 1.05),
+					rng:NextNumber(-2.2, 2.2)
+				)
+				createDecorPart(
+					parent,
+					"TreeCanopy",
+					Vector3.new(canopySize, canopySize * rng:NextNumber(0.65, 0.95), canopySize),
+					trunk.CFrame * CFrame.new(offset) * CFrame.Angles(0, math.rad(rng:NextNumber(0, 360)), 0),
+					Color3.fromRGB(
+						rng:NextInteger(54, 88),
+						rng:NextInteger(92, 136),
+						rng:NextInteger(48, 80)
+					),
+					Enum.Material.Grass,
+					false
+				)
+			end
+		end
+	end
+end
+
+local function createDestructibleShrubs(parent: Folder, spawnPos: Vector3)
+	for _ = 1, 120 do
+		local basePos = Vector3.new(rng:NextNumber(-270, 270), 3, rng:NextNumber(-270, 270))
+		if not isNearSpawn(basePos, spawnPos, 16) then
+			local center = createDecorPart(
+				parent,
+				"ShrubCore",
+				Vector3.new(rng:NextNumber(1.2, 2.6), rng:NextNumber(0.7, 1.4), rng:NextNumber(1.2, 2.6)),
+				CFrame.new(basePos + Vector3.new(0, rng:NextNumber(0.35, 0.7), 0)),
+				Color3.fromRGB(
+					rng:NextInteger(42, 72),
+					rng:NextInteger(86, 126),
+					rng:NextInteger(42, 68)
+				),
+				Enum.Material.Grass,
+				false
+			)
+
+			local leafCount = rng:NextInteger(3, 6)
+			for _ = 1, leafCount do
+				local radius = rng:NextNumber(0.6, 1.5)
+				local angle = rng:NextNumber(0, math.pi * 2)
+				createDecorPart(
+					parent,
+					"ShrubLeaf",
+					Vector3.new(rng:NextNumber(0.6, 1.6), rng:NextNumber(0.4, 1.0), rng:NextNumber(0.6, 1.6)),
+					center.CFrame
+						* CFrame.new(math.cos(angle) * radius, rng:NextNumber(0.2, 0.9), math.sin(angle) * radius)
+						* CFrame.Angles(0, math.rad(rng:NextNumber(0, 360)), 0),
+					Color3.fromRGB(
+						rng:NextInteger(54, 90),
+						rng:NextInteger(106, 152),
+						rng:NextInteger(48, 84)
+					),
+					Enum.Material.Grass,
+					false
+				)
+			end
+		end
+	end
+end
+
+local function createDestructibleMountains(parent: Folder, spawnPos: Vector3)
+	for i = 1, 18 do
+		local angle = (i / 18) * math.pi * 2 + rng:NextNumber(-0.16, 0.16)
+		local radius = rng:NextNumber(150, 290)
+		local pos = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		if not isNearSpawn(pos, spawnPos, 56) then
+			local baseWidth = rng:NextNumber(20, 54)
+			local height = rng:NextNumber(24, 96)
+			local depth = rng:NextNumber(20, 54)
+			createDecorPart(
+				parent,
+				"MountainBlock",
+				Vector3.new(baseWidth, height, depth),
+				CFrame.new(pos + Vector3.new(0, height * 0.5 + 2, 0))
+					* CFrame.Angles(
+						math.rad(rng:NextNumber(-7, 7)),
+						math.rad(rng:NextNumber(0, 360)),
+						math.rad(rng:NextNumber(-7, 7))
+					),
+				Color3.fromRGB(
+					rng:NextInteger(72, 98),
+					rng:NextInteger(76, 104),
+					rng:NextInteger(70, 94)
+				),
+				Enum.Material.Slate,
+				true
+			)
+		end
+	end
+end
+
 local function createDebrisScatter(parent: Folder)
 	for _ = 1, 70 do
 		local debris = Instance.new("Part")
@@ -224,6 +367,7 @@ local function createDebrisScatter(parent: Folder)
 		local z = rng:NextNumber(-230, 230)
 		debris.CFrame = CFrame.new(x, 3.05, z)
 			* CFrame.Angles(math.rad(rng:NextNumber(-4, 4)), math.rad(rng:NextNumber(0, 360)), math.rad(rng:NextNumber(-4, 4)))
+		debris:SetAttribute(destructibleAttribute, true)
 		debris.Parent = parent
 	end
 end
@@ -296,6 +440,9 @@ function WorldService.Start()
 		createRuinBlock("Ruins_B", Vector3.new(18, 11, 22), Vector3.new(-34, 5.5, -22), Color3.fromRGB(96, 98, 91), decor)
 		createRuinBlock("Ruins_C", Vector3.new(24, 13, 12), Vector3.new(20, 6.5, -39), Color3.fromRGB(74, 78, 71), decor)
 		createRuinBlock("Ruins_D", Vector3.new(14, 9, 14), Vector3.new(-62, 4.5, 34), Color3.fromRGB(84, 86, 80), decor)
+		createDestructibleMountains(decor, spawn.Position)
+		createDestructibleTrees(decor, spawn.Position)
+		createDestructibleShrubs(decor, spawn.Position)
 
 		createDebrisScatter(decor)
 		createCitySilhouette(decor)
