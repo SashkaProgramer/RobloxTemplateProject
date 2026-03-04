@@ -56,9 +56,9 @@ staminaLabel.Size = UDim2.fromOffset(260, 22)
 staminaLabel.Position = UDim2.fromOffset(10, 36)
 staminaLabel.TextXAlignment = Enum.TextXAlignment.Left
 staminaLabel.Font = Enum.Font.Gotham
-staminaLabel.TextColor3 = Color3.fromRGB(219, 219, 219)
+staminaLabel.TextColor3 = Color3.fromRGB(184, 216, 255)
 staminaLabel.TextSize = 14
-staminaLabel.Text = "Stamina: 100"
+staminaLabel.Text = ("Stamina: %d"):format(GameConfig.Player.MaxStamina)
 staminaLabel.Parent = panel
 
 local hungerLabel = staminaLabel:Clone()
@@ -88,9 +88,9 @@ toastCorner.Parent = toast
 
 local hpFrame = Instance.new("Frame")
 hpFrame.Name = "HpFrame"
-hpFrame.BackgroundColor3 = Color3.fromRGB(50, 18, 18)
+hpFrame.BackgroundColor3 = Color3.fromRGB(19, 22, 30)
 hpFrame.BackgroundTransparency = 0.2
-hpFrame.Size = UDim2.fromOffset(220, 72)
+hpFrame.Size = UDim2.fromOffset(260, 112)
 hpFrame.AnchorPoint = Vector2.new(1, 0)
 hpFrame.Position = UDim2.new(1, -20, 0, 20)
 hpFrame.Parent = screenGui
@@ -102,25 +102,72 @@ hpFrameCorner.Parent = hpFrame
 local hpLabel = Instance.new("TextLabel")
 hpLabel.Name = "HpLabel"
 hpLabel.BackgroundTransparency = 1
-hpLabel.Size = UDim2.fromOffset(200, 30)
+hpLabel.Size = UDim2.fromOffset(240, 22)
 hpLabel.Position = UDim2.fromOffset(10, 8)
 hpLabel.Font = Enum.Font.GothamBold
-hpLabel.TextSize = 30
-hpLabel.TextColor3 = Color3.fromRGB(255, 220, 220)
+hpLabel.TextSize = 20
+hpLabel.TextColor3 = Color3.fromRGB(255, 174, 174)
+hpLabel.TextXAlignment = Enum.TextXAlignment.Left
 hpLabel.Text = "HP: 0/0"
 hpLabel.Parent = hpFrame
 
-local hpStaminaLabel = Instance.new("TextLabel")
-hpStaminaLabel.Name = "TopStaminaLabel"
-hpStaminaLabel.BackgroundTransparency = 1
-hpStaminaLabel.Size = UDim2.fromOffset(200, 22)
-hpStaminaLabel.Position = UDim2.fromOffset(10, 42)
-hpStaminaLabel.Font = Enum.Font.GothamMedium
-hpStaminaLabel.TextSize = 16
-hpStaminaLabel.TextColor3 = Color3.fromRGB(236, 223, 191)
-hpStaminaLabel.TextXAlignment = Enum.TextXAlignment.Left
-hpStaminaLabel.Text = ("Stamina: %d/%d"):format(GameConfig.Player.MaxStamina, GameConfig.Player.MaxStamina)
-hpStaminaLabel.Parent = hpFrame
+local hpBarBackground = Instance.new("Frame")
+hpBarBackground.Name = "HpBarBackground"
+hpBarBackground.BackgroundColor3 = Color3.fromRGB(61, 23, 23)
+hpBarBackground.BorderSizePixel = 0
+hpBarBackground.Size = UDim2.fromOffset(240, 12)
+hpBarBackground.Position = UDim2.fromOffset(10, 32)
+hpBarBackground.Parent = hpFrame
+
+local hpBarBackgroundCorner = Instance.new("UICorner")
+hpBarBackgroundCorner.CornerRadius = UDim.new(0, 6)
+hpBarBackgroundCorner.Parent = hpBarBackground
+
+local hpBarFill = Instance.new("Frame")
+hpBarFill.Name = "HpBarFill"
+hpBarFill.BackgroundColor3 = Color3.fromRGB(212, 57, 57)
+hpBarFill.BorderSizePixel = 0
+hpBarFill.Size = UDim2.fromScale(0, 1)
+hpBarFill.Parent = hpBarBackground
+
+local hpBarFillCorner = Instance.new("UICorner")
+hpBarFillCorner.CornerRadius = UDim.new(0, 6)
+hpBarFillCorner.Parent = hpBarFill
+
+local staminaValueLabel = Instance.new("TextLabel")
+staminaValueLabel.Name = "StaminaLabel"
+staminaValueLabel.BackgroundTransparency = 1
+staminaValueLabel.Size = UDim2.fromOffset(240, 20)
+staminaValueLabel.Position = UDim2.fromOffset(10, 56)
+staminaValueLabel.Font = Enum.Font.GothamMedium
+staminaValueLabel.TextSize = 17
+staminaValueLabel.TextColor3 = Color3.fromRGB(181, 220, 255)
+staminaValueLabel.TextXAlignment = Enum.TextXAlignment.Left
+staminaValueLabel.Text = ("Stamina: %d/%d"):format(GameConfig.Player.MaxStamina, GameConfig.Player.MaxStamina)
+staminaValueLabel.Parent = hpFrame
+
+local staminaBarBackground = Instance.new("Frame")
+staminaBarBackground.Name = "StaminaBarBackground"
+staminaBarBackground.BackgroundColor3 = Color3.fromRGB(22, 40, 74)
+staminaBarBackground.BorderSizePixel = 0
+staminaBarBackground.Size = UDim2.fromOffset(240, 12)
+staminaBarBackground.Position = UDim2.fromOffset(10, 80)
+staminaBarBackground.Parent = hpFrame
+
+local staminaBarBackgroundCorner = Instance.new("UICorner")
+staminaBarBackgroundCorner.CornerRadius = UDim.new(0, 6)
+staminaBarBackgroundCorner.Parent = staminaBarBackground
+
+local staminaBarFill = Instance.new("Frame")
+staminaBarFill.Name = "StaminaBarFill"
+staminaBarFill.BackgroundColor3 = Color3.fromRGB(56, 132, 232)
+staminaBarFill.BorderSizePixel = 0
+staminaBarFill.Size = UDim2.fromScale(1, 1)
+staminaBarFill.Parent = staminaBarBackground
+
+local staminaBarFillCorner = Instance.new("UICorner")
+staminaBarFillCorner.CornerRadius = UDim.new(0, 6)
+staminaBarFillCorner.Parent = staminaBarFill
 
 local crosshair = Instance.new("Frame")
 crosshair.Name = "Crosshair"
@@ -219,6 +266,28 @@ local lastAimSent = 0
 local shoulderCameraOffset = Vector3.new(1.45, 0.65, 0)
 local crosshairPixelOffset = Vector2.new(0, -128)
 
+local function setBarRatio(fillBar: Frame, ratio: number)
+	local clamped = math.clamp(ratio, 0, 1)
+	fillBar.Size = UDim2.fromScale(clamped, 1)
+end
+
+local function updateStaminaHud(stamina: number)
+	local maxStamina = math.max(1, GameConfig.Player.MaxStamina)
+	local clampedStamina = math.clamp(stamina, 0, maxStamina)
+	staminaValueLabel.Text = ("Stamina: %d/%d"):format(math.floor(clampedStamina + 0.5), maxStamina)
+	setBarRatio(staminaBarFill, clampedStamina / maxStamina)
+
+	if clampedStamina <= GameConfig.Player.LowStaminaThreshold then
+		staminaLabel.TextColor3 = Color3.fromRGB(129, 186, 255)
+		staminaValueLabel.TextColor3 = Color3.fromRGB(165, 211, 255)
+		staminaBarFill.BackgroundColor3 = Color3.fromRGB(74, 160, 255)
+	else
+		staminaLabel.TextColor3 = Color3.fromRGB(184, 216, 255)
+		staminaValueLabel.TextColor3 = Color3.fromRGB(181, 220, 255)
+		staminaBarFill.BackgroundColor3 = Color3.fromRGB(56, 132, 232)
+	end
+end
+
 local function setToast(text: string)
 	lastToastId += 1
 	local toastId = lastToastId
@@ -235,23 +304,28 @@ local function updateHpLabel()
 	local character = player.Character
 	if not character then
 		hpLabel.Text = "HP: 0/0"
+		setBarRatio(hpBarFill, 0)
 		return
 	end
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
 		hpLabel.Text = "HP: 0/0"
+		setBarRatio(hpBarFill, 0)
 		return
 	end
 
 	local health = math.max(0, math.floor(humanoid.Health + 0.5))
 	local maxHealth = math.max(1, math.floor(humanoid.MaxHealth + 0.5))
 	hpLabel.Text = ("HP: %d/%d"):format(health, maxHealth)
+	setBarRatio(hpBarFill, health / maxHealth)
 
 	if health <= math.floor(maxHealth * 0.3) then
 		hpLabel.TextColor3 = Color3.fromRGB(255, 122, 122)
+		hpBarFill.BackgroundColor3 = Color3.fromRGB(231, 72, 72)
 	else
-		hpLabel.TextColor3 = Color3.fromRGB(255, 220, 220)
+		hpLabel.TextColor3 = Color3.fromRGB(255, 174, 174)
+		hpBarFill.BackgroundColor3 = Color3.fromRGB(212, 57, 57)
 	end
 end
 
@@ -397,6 +471,8 @@ RunService.RenderStepped:Connect(function()
 	pushAimUpdate(false)
 end)
 
+updateStaminaHud(GameConfig.Player.MaxStamina)
+
 stateUpdateEvent.OnClientEvent:Connect(function(data)
 	local stamina = tonumber(data.stamina) or 0
 	local hunger = tonumber(data.hunger) or 0
@@ -406,15 +482,7 @@ stateUpdateEvent.OnClientEvent:Connect(function(data)
 	staminaLabel.Text = ("Stamina: %d"):format(stamina)
 	hungerLabel.Text = ("Hunger: %d"):format(hunger)
 	scrapLabel.Text = ("Scrap: %d"):format(scrap)
-	hpStaminaLabel.Text = ("Stamina: %d/%d"):format(stamina, GameConfig.Player.MaxStamina)
-
-	if stamina <= GameConfig.Player.LowStaminaThreshold then
-		staminaLabel.TextColor3 = Color3.fromRGB(235, 127, 127)
-		hpStaminaLabel.TextColor3 = Color3.fromRGB(255, 156, 156)
-	else
-		staminaLabel.TextColor3 = Color3.fromRGB(219, 219, 219)
-		hpStaminaLabel.TextColor3 = Color3.fromRGB(236, 223, 191)
-	end
+	updateStaminaHud(stamina)
 
 	sprinting = isSprinting
 end)
