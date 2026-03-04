@@ -43,6 +43,17 @@ local function applyMoveSpeed(player: Player, state: PlayerState)
 	end
 end
 
+local function applyConfiguredHealth(character: Model)
+	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
+	if not humanoid or not humanoid:IsA("Humanoid") then
+		return
+	end
+
+	local maxHealth = math.max(1, GameConfig.Player.MaxHealth)
+	humanoid.MaxHealth = maxHealth
+	humanoid.Health = maxHealth
+end
+
 local function pushState(player: Player)
 	local state = states[player]
 	if not state then
@@ -94,7 +105,8 @@ local function onPlayerAdded(player: Player)
 		isSprinting = false,
 	}
 
-	player.CharacterAdded:Connect(function()
+	player.CharacterAdded:Connect(function(character: Model)
+		applyConfiguredHealth(character)
 		local state = states[player]
 		if state then
 			state.isSprinting = false
@@ -102,6 +114,13 @@ local function onPlayerAdded(player: Player)
 			pushState(player)
 		end
 	end)
+
+	local existingCharacter = player.Character
+	if existingCharacter then
+		task.spawn(function()
+			applyConfiguredHealth(existingCharacter)
+		end)
+	end
 end
 
 local function onPlayerRemoving(player: Player)
