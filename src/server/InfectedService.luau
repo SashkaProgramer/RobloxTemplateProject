@@ -982,16 +982,66 @@ local function applyExplosionDamage(center: Vector3, radius: number, maxDamage: 
 	return hitCount
 end
 
-local function emitSwordHitSparks(position: Vector3, fromDirection: Vector3)
+local function emitSwordHitBlood(position: Vector3, fromDirection: Vector3)
+	local count = rng:NextInteger(11, 20)
+	local outward = if fromDirection.Magnitude > 0.001 then fromDirection.Unit else Vector3.new(0, 0, -1)
+
+	for _ = 1, count do
+		local blood = Instance.new("Part")
+		blood.Name = "SwordHitBlood"
+		local side = rng:NextNumber(0.07, 0.19)
+		blood.Size = Vector3.new(side, side, side)
+		blood.Shape = Enum.PartType.Ball
+		blood.Material = Enum.Material.SmoothPlastic
+		blood.Color = Color3.fromRGB(
+			rng:NextInteger(118, 176),
+			rng:NextInteger(12, 36),
+			rng:NextInteger(12, 28)
+		)
+		blood.TopSurface = Enum.SurfaceType.Smooth
+		blood.BottomSurface = Enum.SurfaceType.Smooth
+		blood.CanCollide = false
+		blood.CanQuery = false
+		blood.CanTouch = false
+		blood.Anchored = false
+		blood.CFrame = CFrame.new(position)
+			* CFrame.new(
+				rng:NextNumber(-0.22, 0.22),
+				rng:NextNumber(-0.12, 0.22),
+				rng:NextNumber(-0.22, 0.22)
+			)
+		blood.Parent = Workspace
+
+		local spread = Vector3.new(
+			rng:NextNumber(-0.95, 0.95),
+			rng:NextNumber(0.02, 1.15),
+			rng:NextNumber(-0.95, 0.95)
+		)
+		local velocityDir = outward * 1.35 + spread
+		if velocityDir.Magnitude < 0.001 then
+			velocityDir = Vector3.new(0, 1, 0)
+		end
+
+		blood.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(14, 30)
+		blood.AssemblyAngularVelocity = Vector3.new(
+			rng:NextNumber(-22, 22),
+			rng:NextNumber(-22, 22),
+			rng:NextNumber(-22, 22)
+		)
+		Debris:AddItem(blood, 0.7)
+	end
+end
+
+local function emitSwordHitBossSparks(position: Vector3, fromDirection: Vector3)
 	local minCount = math.max(1, GameConfig.Player.AttackSparkCountMin)
 	local maxCount = math.max(minCount, GameConfig.Player.AttackSparkCountMax)
-	local count = rng:NextInteger(minCount, maxCount)
+	local count = rng:NextInteger(minCount + 4, maxCount + 9)
 	local outward = if fromDirection.Magnitude > 0.001 then fromDirection.Unit else Vector3.new(0, 0, -1)
 
 	for _ = 1, count do
 		local spark = Instance.new("Part")
-		spark.Name = "SwordHitSpark"
-		local side = rng:NextNumber(0.06, 0.14)
+		spark.Name = "SwordHitBossSpark"
+		local side = rng:NextNumber(0.13, 0.3)
 		spark.Size = Vector3.new(side, side, side)
 		spark.Shape = Enum.PartType.Ball
 		spark.Material = Enum.Material.Neon
@@ -1015,22 +1065,30 @@ local function emitSwordHitSparks(position: Vector3, fromDirection: Vector3)
 		spark.Parent = Workspace
 
 		local spread = Vector3.new(
-			rng:NextNumber(-0.85, 0.85),
-			rng:NextNumber(0.15, 1.25),
-			rng:NextNumber(-0.85, 0.85)
+			rng:NextNumber(-1.05, 1.05),
+			rng:NextNumber(0.18, 1.45),
+			rng:NextNumber(-1.05, 1.05)
 		)
-		local velocityDir = outward * 1.7 + spread
+		local velocityDir = outward * 2.2 + spread
 		if velocityDir.Magnitude < 0.001 then
 			velocityDir = Vector3.new(0, 1, 0)
 		end
 
-		spark.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(20, 36)
+		spark.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(28, 50)
 		spark.AssemblyAngularVelocity = Vector3.new(
-			rng:NextNumber(-26, 26),
-			rng:NextNumber(-26, 26),
-			rng:NextNumber(-26, 26)
+			rng:NextNumber(-34, 34),
+			rng:NextNumber(-34, 34),
+			rng:NextNumber(-34, 34)
 		)
-		Debris:AddItem(spark, 0.7)
+		Debris:AddItem(spark, 0.95)
+	end
+end
+
+local function emitSwordHitImpactFx(agent: InfectedAgent, position: Vector3, fromDirection: Vector3)
+	if agent.archetype == "baium" then
+		emitSwordHitBossSparks(position, fromDirection)
+	else
+		emitSwordHitBlood(position, fromDirection)
 	end
 end
 
@@ -1189,7 +1247,7 @@ function InfectedService.TryPlayerAttack(player: Player): boolean
 	if didHit then
 		local sparkFrom = bestAgent.root.Position + Vector3.new(0, 1, 0)
 		local sparkPos = if hitPosition then hitPosition else sparkFrom
-		emitSwordHitSparks(sparkPos, sparkFrom - origin)
+		emitSwordHitImpactFx(bestAgent, sparkPos, sparkFrom - origin)
 	end
 	return didHit
 end
