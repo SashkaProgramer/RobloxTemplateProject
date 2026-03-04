@@ -21,6 +21,7 @@ local states: { [Player]: PlayerState } = {}
 local stateUpdateEvent: RemoteEvent
 local setSprintingEvent: RemoteEvent
 local accum = 0
+local nameTagGuiName = "PlayerNameTag"
 
 local function getHumanoid(player: Player): Humanoid?
 	local character = player.Character
@@ -43,6 +44,75 @@ local function applyMoveSpeed(player: Player, state: PlayerState)
 	end
 end
 
+local function resolveNameTagPart(character: Model): BasePart?
+	local head = character:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		return head
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root
+	end
+
+	local waitedHead = character:WaitForChild("Head", 2)
+	if waitedHead and waitedHead:IsA("BasePart") then
+		return waitedHead
+	end
+
+	local waitedRoot = character:WaitForChild("HumanoidRootPart", 2)
+	if waitedRoot and waitedRoot:IsA("BasePart") then
+		return waitedRoot
+	end
+	return nil
+end
+
+local function applyCharacterNameTag(character: Model, displayName: string)
+	local tagPart = resolveNameTagPart(character)
+	if not tagPart then
+		return
+	end
+
+	local existingTag = character:FindFirstChild(nameTagGuiName)
+	if existingTag then
+		existingTag:Destroy()
+	end
+
+	local nameTag = Instance.new("BillboardGui")
+	nameTag.Name = nameTagGuiName
+	nameTag.Adornee = tagPart
+	nameTag.Size = UDim2.fromOffset(170, 34)
+	nameTag.StudsOffsetWorldSpace = Vector3.new(0, 2.9, 0)
+	nameTag.AlwaysOnTop = true
+	nameTag.MaxDistance = 230
+	nameTag.Parent = character
+
+	local bg = Instance.new("Frame")
+	bg.Name = "Bg"
+	bg.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
+	bg.BackgroundTransparency = 0.4
+	bg.BorderSizePixel = 0
+	bg.Size = UDim2.fromScale(1, 1)
+	bg.Parent = nameTag
+
+	local bgCorner = Instance.new("UICorner")
+	bgCorner.CornerRadius = UDim.new(0, 8)
+	bgCorner.Parent = bg
+
+	local nameText = Instance.new("TextLabel")
+	nameText.Name = "Name"
+	nameText.BackgroundTransparency = 1
+	nameText.Size = UDim2.fromScale(1, 1)
+	nameText.Font = Enum.Font.SourceSansBold
+	nameText.TextScaled = true
+	nameText.TextSize = 24
+	nameText.Text = displayName
+	nameText.TextColor3 = Color3.fromRGB(236, 245, 255)
+	nameText.TextStrokeTransparency = 0.2
+	nameText.TextStrokeColor3 = Color3.fromRGB(8, 12, 18)
+	nameText.Parent = bg
+end
+
 local function applyConfiguredCharacterState(character: Model)
 	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
 	if not humanoid or not humanoid:IsA("Humanoid") then
@@ -52,6 +122,10 @@ local function applyConfiguredCharacterState(character: Model)
 	local configuredName = GameConfig.Player.DisplayName
 	if typeof(configuredName) == "string" and configuredName ~= "" then
 		humanoid.DisplayName = configuredName
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Subject
+		humanoid.NameDisplayDistance = 220
+		humanoid.NameOcclusion = Enum.NameOcclusion.NoOcclusion
+		applyCharacterNameTag(character, configuredName)
 	end
 
 	local maxHealth = math.max(1, GameConfig.Player.MaxHealth)
@@ -112,6 +186,16 @@ local function onPlayerAdded(player: Player)
 
 	player.CharacterAdded:Connect(function(character: Model)
 		applyConfiguredCharacterState(character)
+		task.defer(function()
+			task.wait(0.65)
+			if character.Parent then
+				applyConfiguredCharacterState(character)
+			end
+			task.wait(1.15)
+			if character.Parent then
+				applyConfiguredCharacterState(character)
+			end
+		end)
 		local state = states[player]
 		if state then
 			state.isSprinting = false
@@ -124,6 +208,10 @@ local function onPlayerAdded(player: Player)
 	if existingCharacter then
 		task.spawn(function()
 			applyConfiguredCharacterState(existingCharacter)
+			task.wait(0.5)
+			if existingCharacter.Parent then
+				applyConfiguredCharacterState(existingCharacter)
+			end
 		end)
 	end
 end
