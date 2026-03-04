@@ -18,14 +18,18 @@ local birdMaxAltitude = 96
 local treeCount = 72
 local shrubCount = 220
 local grassPatchCount = 170
-local dragonOrbitRadius = 225
-local dragonMinAltitude = 104
-local dragonMaxAltitude = 132
+local bloodMoonDistance = 240
+local bloodMoonAltitude = 210
+local bloodMoonSize = 96
+local dragonOrbitRadius = 140
+local dragonMinAltitude = 68
+local dragonMaxAltitude = 88
 local dragonFireMinCooldown = 4.5
 local dragonFireMaxCooldown = 8.2
 local dragonFireDamage = 16
 local dragonFireDamageRadius = 20
 local dragonFireTickSeconds = 0.22
+local dragonPeacefulMode = true
 
 type BirdAgent = {
 	model: Model,
@@ -45,15 +49,31 @@ type DragonAgent = {
 	model: Model,
 	root: Part,
 	body: Part,
+	chest: Part,
 	neck: Part,
 	head: Part,
+	snout: Part,
 	jaw: Part,
+	leftFang: Part,
+	rightFang: Part,
 	leftWing: Part,
 	rightWing: Part,
 	leftWingTip: Part,
 	rightWingTip: Part,
+	leftWingMembrane: Part,
+	rightWingMembrane: Part,
+	leftForeLeg: Part,
+	rightForeLeg: Part,
+	leftForeClaw: Part,
+	rightForeClaw: Part,
+	leftHindLeg: Part,
+	rightHindLeg: Part,
+	leftHindClaw: Part,
+	rightHindClaw: Part,
 	tailBase: Part,
 	tailTip: Part,
+	spineSpikes: { Part },
+	tailSpikes: { Part },
 	leftHorn: Part,
 	rightHorn: Part,
 	leftEye: Part,
@@ -577,6 +597,12 @@ local function getCharacterHumanoid(player: Player): Humanoid?
 end
 
 local function pickDragonFireTarget(center: Vector3): Vector3
+	if dragonPeacefulMode then
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local radius = rng:NextNumber(120, 250)
+		return center + Vector3.new(math.cos(angle) * radius, rng:NextNumber(2, 24), math.sin(angle) * radius)
+	end
+
 	local bestDistance = math.huge
 	local bestTarget: Vector3? = nil
 
@@ -604,6 +630,10 @@ local function pickDragonFireTarget(center: Vector3): Vector3
 end
 
 local function applyDragonFireDamage(position: Vector3, radius: number, damage: number)
+	if dragonPeacefulMode then
+		return
+	end
+
 	for _, player in Players:GetPlayers() do
 		local root = getCharacterRoot(player)
 		local humanoid = getCharacterHumanoid(player)
@@ -692,15 +722,20 @@ local function syncDragonVisual(agent: DragonAgent)
 	local flap = math.sin(agent.flapPhase)
 	local flapDouble = math.sin(agent.flapPhase * 2)
 	local tailSwing = math.sin(agent.tailPhase)
+	local tailTwist = math.sin(agent.tailPhase * 1.7)
 	local bob = math.sin(agent.pitchBobPhase) * 0.9
 	local wingRoll = math.rad(58) * flap
 	local wingPitch = math.rad(10) * flap
 	local jawBase = if agent.isBreathingFire then 21 else 8
+	local legStep = math.sin(agent.flapPhase * 0.85)
+	local legCounter = math.sin(agent.flapPhase * 0.85 + math.pi)
 
 	agent.body.CFrame = rootCFrame * CFrame.new(0, bob, 0.2) * CFrame.Angles(math.rad(3 + 2 * flapDouble), 0, 0)
+	agent.chest.CFrame = rootCFrame * CFrame.new(0, 1.7 + bob, -4.2) * CFrame.Angles(math.rad(7 + 3 * flapDouble), 0, 0)
 	agent.neck.CFrame = rootCFrame * CFrame.new(0, 3.4 + bob, -6.8) * CFrame.Angles(math.rad(-6 + 4 * flapDouble), 0, 0)
 	agent.head.CFrame = rootCFrame * CFrame.new(0, 3.9 + bob, -12.7) * CFrame.Angles(math.rad(-11 + 5 * flapDouble), 0, 0)
 	agent.jaw.CFrame = rootCFrame * CFrame.new(0, 2.25 + bob, -13.4) * CFrame.Angles(math.rad(jawBase + 2.5 * flapDouble), 0, 0)
+	agent.snout.CFrame = rootCFrame * CFrame.new(0, 3.1 + bob, -16.1) * CFrame.Angles(math.rad(-8 + 3 * flapDouble), 0, 0)
 
 	agent.leftWing.CFrame = rootCFrame
 		* CFrame.new(-11.4, 2.2 + bob * 0.3, -1.8)
@@ -714,19 +749,76 @@ local function syncDragonVisual(agent: DragonAgent)
 	agent.rightWingTip.CFrame = rootCFrame
 		* CFrame.new(22.1, 1.8 + bob * 0.22, -1.4)
 		* CFrame.Angles(math.rad(4 * flap), math.rad(11), math.rad(10) - wingRoll * 1.28)
+	agent.leftWingMembrane.CFrame = rootCFrame
+		* CFrame.new(-16.8, 1.2 + bob * 0.24, -2.1)
+		* CFrame.Angles(math.rad(wingPitch * 0.58), math.rad(-10), math.rad(-12) + wingRoll * 0.92)
+	agent.rightWingMembrane.CFrame = rootCFrame
+		* CFrame.new(16.8, 1.2 + bob * 0.24, -2.1)
+		* CFrame.Angles(math.rad(wingPitch * 0.58), math.rad(10), math.rad(12) - wingRoll * 0.92)
 
 	agent.tailBase.CFrame = rootCFrame
 		* CFrame.new(0, 1.25 + bob * 0.22, 11.1)
 		* CFrame.Angles(math.rad(11), math.rad(10 * tailSwing), math.rad(3.5 * tailSwing))
 	agent.tailTip.CFrame = rootCFrame
 		* CFrame.new(0, 0.88 + bob * 0.22, 17.2)
-		* CFrame.Angles(math.rad(16), math.rad(18 * tailSwing), math.rad(2 * tailSwing))
+		* CFrame.Angles(math.rad(16), math.rad(18 * tailSwing), math.rad(2 * tailTwist))
+
+	agent.leftForeLeg.CFrame = rootCFrame
+		* CFrame.new(-3.9, -1.8 + bob * 0.1, -4.1)
+		* CFrame.Angles(math.rad(30 + 8 * legStep), 0, math.rad(7))
+	agent.rightForeLeg.CFrame = rootCFrame
+		* CFrame.new(3.9, -1.8 + bob * 0.1, -4.1)
+		* CFrame.Angles(math.rad(30 + 8 * legCounter), 0, math.rad(-7))
+	agent.leftForeClaw.CFrame = rootCFrame
+		* CFrame.new(-4.1, -5.0 + bob * 0.12, -4.7)
+		* CFrame.Angles(math.rad(16 + 4 * legStep), 0, math.rad(8))
+	agent.rightForeClaw.CFrame = rootCFrame
+		* CFrame.new(4.1, -5.0 + bob * 0.12, -4.7)
+		* CFrame.Angles(math.rad(16 + 4 * legCounter), 0, math.rad(-8))
+
+	agent.leftHindLeg.CFrame = rootCFrame
+		* CFrame.new(-4.4, -2.0 + bob * 0.08, 7.3)
+		* CFrame.Angles(math.rad(24 + 7 * legCounter), 0, math.rad(8))
+	agent.rightHindLeg.CFrame = rootCFrame
+		* CFrame.new(4.4, -2.0 + bob * 0.08, 7.3)
+		* CFrame.Angles(math.rad(24 + 7 * legStep), 0, math.rad(-8))
+	agent.leftHindClaw.CFrame = rootCFrame
+		* CFrame.new(-4.7, -5.2 + bob * 0.1, 8.2)
+		* CFrame.Angles(math.rad(12 + 4 * legCounter), 0, math.rad(8))
+	agent.rightHindClaw.CFrame = rootCFrame
+		* CFrame.new(4.7, -5.2 + bob * 0.1, 8.2)
+		* CFrame.Angles(math.rad(12 + 4 * legStep), 0, math.rad(-8))
 
 	local headCFrame = agent.head.CFrame
 	agent.leftHorn.CFrame = headCFrame * CFrame.new(-1.85, 1.15, -0.8) * CFrame.Angles(math.rad(-34), math.rad(-16), math.rad(8))
 	agent.rightHorn.CFrame = headCFrame * CFrame.new(1.85, 1.15, -0.8) * CFrame.Angles(math.rad(-34), math.rad(16), math.rad(-8))
 	agent.leftEye.CFrame = headCFrame * CFrame.new(-1.08, 0.24, -2.68)
 	agent.rightEye.CFrame = headCFrame * CFrame.new(1.08, 0.24, -2.68)
+	agent.leftFang.CFrame = headCFrame * CFrame.new(-1.08, -0.82, -3.35) * CFrame.Angles(math.rad(10), 0, 0)
+	agent.rightFang.CFrame = headCFrame * CFrame.new(1.08, -0.82, -3.35) * CFrame.Angles(math.rad(10), 0, 0)
+
+	local spineCount = #agent.spineSpikes
+	for index, spike in agent.spineSpikes do
+		local t = if spineCount > 1 then (index - 1) / (spineCount - 1) else 0
+		local z = -4.6 + t * 14.4
+		local y = 3.7 + math.sin(agent.tailPhase * 0.75 + t * math.pi * 2) * 0.25
+		local yaw = math.rad(3 * math.sin(agent.tailPhase + t * 3.6))
+		spike.CFrame = rootCFrame
+			* CFrame.new(0, y + bob * 0.1, z)
+			* CFrame.Angles(math.rad(-18 + 8 * t), yaw, 0)
+	end
+
+	local tailSpikeCount = #agent.tailSpikes
+	for index, spike in agent.tailSpikes do
+		local t = if tailSpikeCount > 1 then (index - 1) / (tailSpikeCount - 1) else 0
+		local z = 12.8 + t * 6.2
+		local y = 1.7 - t * 0.44
+		local yaw = math.rad(12 * tailSwing + t * 7)
+		local roll = math.rad(6 * tailTwist)
+		spike.CFrame = rootCFrame
+			* CFrame.new(0, y + bob * 0.06, z)
+			* CFrame.Angles(math.rad(14 + t * 8), yaw, roll)
+	end
 end
 
 local function updateDragonFireBeam(agent: DragonAgent, fromPos: Vector3, toPos: Vector3)
@@ -775,7 +867,7 @@ local function startDragonFireBreath(agent: DragonAgent)
 	agent.fireDuration = rng:NextNumber(2.2, 3.8)
 	agent.fireTick = 0
 	agent.fireRetarget = 0
-	agent.fireTarget = pickDragonFireTarget(agent.root.Position)
+	agent.fireTarget = pickDragonFireTarget(agent.center)
 	agent.fireEmitter.Enabled = true
 	agent.smokeEmitter.Enabled = true
 	agent.emberEmitter.Enabled = true
@@ -803,7 +895,7 @@ local function updateDragonFireBreath(agent: DragonAgent, dt: number)
 
 	agent.fireRetarget -= dt
 	if agent.fireRetarget <= 0 then
-		agent.fireTarget = pickDragonFireTarget(agent.root.Position)
+		agent.fireTarget = pickDragonFireTarget(agent.center)
 		agent.fireRetarget = rng:NextNumber(0.35, 0.85)
 	end
 
@@ -840,24 +932,66 @@ local function createDragon(parent: Folder, spawnPos: Vector3): DragonAgent
 	local bodyColor = Color3.fromRGB(56, 58, 64)
 	local scaleColor = Color3.fromRGB(80, 77, 69)
 	local wingColor = Color3.fromRGB(34, 30, 36)
+	local membraneColor = Color3.fromRGB(52, 32, 34)
 	local hornColor = Color3.fromRGB(118, 108, 88)
 
 	local body = createDragonPart(model, "Body", Vector3.new(12.6, 6.2, 20.4) * scale, bodyColor, Enum.Material.Slate)
+	local chest = createDragonPart(model, "Chest", Vector3.new(9.4, 5.6, 8.0) * scale, scaleColor, Enum.Material.Slate)
 	local neck = createDragonPart(model, "Neck", Vector3.new(4.4, 4.2, 8.4) * scale, bodyColor, Enum.Material.Slate)
 	local head = createDragonPart(model, "Head", Vector3.new(5.6, 4.2, 7.2) * scale, bodyColor, Enum.Material.Slate)
+	local snout = createDragonPart(model, "Snout", Vector3.new(3.8, 2.8, 5.4) * scale, scaleColor, Enum.Material.Slate)
 	local jaw = createDragonPart(model, "Jaw", Vector3.new(4.8, 1.2, 5.2) * scale, scaleColor, Enum.Material.Slate)
 	local leftWing = createDragonPart(model, "LeftWing", Vector3.new(14.5, 1.0, 9.2) * scale, wingColor, Enum.Material.SmoothPlastic)
 	local rightWing = createDragonPart(model, "RightWing", Vector3.new(14.5, 1.0, 9.2) * scale, wingColor, Enum.Material.SmoothPlastic)
 	local leftWingTip = createDragonPart(model, "LeftWingTip", Vector3.new(11.4, 0.7, 7.8) * scale, wingColor, Enum.Material.SmoothPlastic)
 	local rightWingTip = createDragonPart(model, "RightWingTip", Vector3.new(11.4, 0.7, 7.8) * scale, wingColor, Enum.Material.SmoothPlastic)
+	local leftWingMembrane = createDragonPart(model, "LeftWingMembrane", Vector3.new(16.8, 0.3, 8.8) * scale, membraneColor, Enum.Material.SmoothPlastic)
+	local rightWingMembrane = createDragonPart(model, "RightWingMembrane", Vector3.new(16.8, 0.3, 8.8) * scale, membraneColor, Enum.Material.SmoothPlastic)
+	leftWingMembrane.Transparency = 0.2
+	rightWingMembrane.Transparency = 0.2
 	local tailBase = createDragonPart(model, "TailBase", Vector3.new(4.2, 3.4, 9.6) * scale, bodyColor, Enum.Material.Slate)
 	local tailTip = createDragonPart(model, "TailTip", Vector3.new(2.2, 2.0, 8.2) * scale, scaleColor, Enum.Material.Slate)
+	local leftForeLeg = createDragonPart(model, "LeftForeLeg", Vector3.new(1.9, 4.1, 2.2) * scale, scaleColor, Enum.Material.Slate)
+	local rightForeLeg = createDragonPart(model, "RightForeLeg", Vector3.new(1.9, 4.1, 2.2) * scale, scaleColor, Enum.Material.Slate)
+	local leftForeClaw = createDragonPart(model, "LeftForeClaw", Vector3.new(2.2, 1.2, 3.0) * scale, hornColor, Enum.Material.Slate)
+	local rightForeClaw = createDragonPart(model, "RightForeClaw", Vector3.new(2.2, 1.2, 3.0) * scale, hornColor, Enum.Material.Slate)
+	local leftHindLeg = createDragonPart(model, "LeftHindLeg", Vector3.new(2.2, 4.6, 2.7) * scale, scaleColor, Enum.Material.Slate)
+	local rightHindLeg = createDragonPart(model, "RightHindLeg", Vector3.new(2.2, 4.6, 2.7) * scale, scaleColor, Enum.Material.Slate)
+	local leftHindClaw = createDragonPart(model, "LeftHindClaw", Vector3.new(2.6, 1.35, 3.2) * scale, hornColor, Enum.Material.Slate)
+	local rightHindClaw = createDragonPart(model, "RightHindClaw", Vector3.new(2.6, 1.35, 3.2) * scale, hornColor, Enum.Material.Slate)
 	local leftHorn = createDragonPart(model, "LeftHorn", Vector3.new(0.8, 2.4, 0.8) * scale, hornColor, Enum.Material.SmoothPlastic)
 	local rightHorn = createDragonPart(model, "RightHorn", Vector3.new(0.8, 2.4, 0.8) * scale, hornColor, Enum.Material.SmoothPlastic)
 	local leftEye = createDragonPart(model, "LeftEye", Vector3.new(0.34, 0.34, 0.34) * scale, Color3.fromRGB(255, 86, 56), Enum.Material.Neon)
 	local rightEye = createDragonPart(model, "RightEye", Vector3.new(0.34, 0.34, 0.34) * scale, Color3.fromRGB(255, 86, 56), Enum.Material.Neon)
+	local leftFang = createDragonPart(model, "LeftFang", Vector3.new(0.22, 0.22, 1.5) * scale, hornColor, Enum.Material.SmoothPlastic)
+	local rightFang = createDragonPart(model, "RightFang", Vector3.new(0.22, 0.22, 1.5) * scale, hornColor, Enum.Material.SmoothPlastic)
 	leftEye.Shape = Enum.PartType.Ball
 	rightEye.Shape = Enum.PartType.Ball
+	snout.Shape = Enum.PartType.Wedge
+	leftFang.Shape = Enum.PartType.Cylinder
+	rightFang.Shape = Enum.PartType.Cylinder
+	leftHorn.Shape = Enum.PartType.Wedge
+	rightHorn.Shape = Enum.PartType.Wedge
+	leftForeClaw.Shape = Enum.PartType.Wedge
+	rightForeClaw.Shape = Enum.PartType.Wedge
+	leftHindClaw.Shape = Enum.PartType.Wedge
+	rightHindClaw.Shape = Enum.PartType.Wedge
+
+	local spineSpikes: { Part } = {}
+	for i = 1, 8 do
+		local spikeSize = Vector3.new(0.7, 2.8 - i * 0.12, 1.2 - i * 0.06) * scale
+		local spike = createDragonPart(model, ("SpineSpike_%d"):format(i), spikeSize, hornColor, Enum.Material.SmoothPlastic)
+		spike.Shape = Enum.PartType.Wedge
+		table.insert(spineSpikes, spike)
+	end
+
+	local tailSpikes: { Part } = {}
+	for i = 1, 5 do
+		local spikeSize = Vector3.new(0.5, 1.8 - i * 0.1, 0.9 - i * 0.08) * scale
+		local spike = createDragonPart(model, ("TailSpike_%d"):format(i), spikeSize, hornColor, Enum.Material.SmoothPlastic)
+		spike.Shape = Enum.PartType.Wedge
+		table.insert(tailSpikes, spike)
+	end
 
 	local mouthAttachment = Instance.new("Attachment")
 	mouthAttachment.Name = "Mouth"
@@ -924,9 +1058,16 @@ local function createDragon(parent: Folder, spawnPos: Vector3): DragonAgent
 	mouthLight.Color = Color3.fromRGB(255, 112, 44)
 	mouthLight.Parent = mouthAttachment
 
+	local presenceLight = Instance.new("PointLight")
+	presenceLight.Name = "DragonPresenceLight"
+	presenceLight.Brightness = 1.3
+	presenceLight.Range = 72
+	presenceLight.Color = Color3.fromRGB(255, 68, 52)
+	presenceLight.Parent = root
+
 	local center = Vector3.new(spawnPos.X, 0, spawnPos.Z)
 	local orbitRadius = dragonOrbitRadius + rng:NextNumber(-26, 26)
-	local orbitAngle = rng:NextNumber(0, math.pi * 2)
+	local orbitAngle = -1.2 + rng:NextNumber(-0.26, 0.26)
 	local altitude = rng:NextNumber(dragonMinAltitude, dragonMaxAltitude)
 	local startPos = center + Vector3.new(math.cos(orbitAngle) * orbitRadius, altitude, math.sin(orbitAngle) * orbitRadius)
 	local lookAngle = orbitAngle + 0.18
@@ -937,15 +1078,31 @@ local function createDragon(parent: Folder, spawnPos: Vector3): DragonAgent
 		model = model,
 		root = root,
 		body = body,
+		chest = chest,
 		neck = neck,
 		head = head,
+		snout = snout,
 		jaw = jaw,
+		leftFang = leftFang,
+		rightFang = rightFang,
 		leftWing = leftWing,
 		rightWing = rightWing,
 		leftWingTip = leftWingTip,
 		rightWingTip = rightWingTip,
+		leftWingMembrane = leftWingMembrane,
+		rightWingMembrane = rightWingMembrane,
+		leftForeLeg = leftForeLeg,
+		rightForeLeg = rightForeLeg,
+		leftForeClaw = leftForeClaw,
+		rightForeClaw = rightForeClaw,
+		leftHindLeg = leftHindLeg,
+		rightHindLeg = rightHindLeg,
+		leftHindClaw = leftHindClaw,
+		rightHindClaw = rightHindClaw,
 		tailBase = tailBase,
 		tailTip = tailTip,
+		spineSpikes = spineSpikes,
+		tailSpikes = tailSpikes,
 		leftHorn = leftHorn,
 		rightHorn = rightHorn,
 		leftEye = leftEye,
@@ -1264,6 +1421,58 @@ local function createCitySilhouette(parent: Folder)
 	end
 end
 
+local function createBloodMoon(parent: Folder, spawnPos: Vector3)
+	local moonDirection = Vector3.new(0.2, 0, -0.98).Unit
+	local moonCenter = spawnPos + moonDirection * bloodMoonDistance + Vector3.new(0, bloodMoonAltitude, 0)
+
+	local moonCore = Instance.new("Part")
+	moonCore.Name = "BloodMoon"
+	moonCore.Shape = Enum.PartType.Ball
+	moonCore.Size = Vector3.new(bloodMoonSize, bloodMoonSize, bloodMoonSize)
+	moonCore.Position = moonCenter
+	moonCore.Anchored = true
+	moonCore.CanCollide = false
+	moonCore.CastShadow = false
+	moonCore.Material = Enum.Material.Neon
+	moonCore.Color = Color3.fromRGB(224, 40, 36)
+	moonCore.Transparency = 0.08
+	moonCore.Parent = parent
+
+	local moonAura = Instance.new("Part")
+	moonAura.Name = "BloodMoonAura"
+	moonAura.Shape = Enum.PartType.Ball
+	moonAura.Size = Vector3.new(bloodMoonSize * 1.42, bloodMoonSize * 1.42, bloodMoonSize * 1.42)
+	moonAura.Position = moonCenter
+	moonAura.Anchored = true
+	moonAura.CanCollide = false
+	moonAura.CastShadow = false
+	moonAura.Material = Enum.Material.Neon
+	moonAura.Color = Color3.fromRGB(255, 66, 60)
+	moonAura.Transparency = 0.89
+	moonAura.Parent = parent
+
+	local moonHalo = Instance.new("Part")
+	moonHalo.Name = "BloodMoonHalo"
+	moonHalo.Shape = Enum.PartType.Cylinder
+	moonHalo.Size = Vector3.new(1.5, bloodMoonSize * 1.86, bloodMoonSize * 1.86)
+	moonHalo.Anchored = true
+	moonHalo.CanCollide = false
+	moonHalo.CastShadow = false
+	moonHalo.Material = Enum.Material.Neon
+	moonHalo.Color = Color3.fromRGB(220, 60, 56)
+	moonHalo.Transparency = 0.9
+	moonHalo.CFrame = CFrame.new(moonCenter) * CFrame.Angles(math.rad(90), 0, math.rad(14))
+	moonHalo.Parent = parent
+
+	local moonLight = Instance.new("PointLight")
+	moonLight.Name = "BloodMoonLight"
+	moonLight.Brightness = 2.4
+	moonLight.Range = 340
+	moonLight.Color = Color3.fromRGB(255, 74, 60)
+	moonLight.Shadows = false
+	moonLight.Parent = moonCore
+end
+
 local function createSpawnVisual(spawn: SpawnLocation, parent: Folder)
 	local slab = Instance.new("Part")
 	slab.Name = "SpawnSlab"
@@ -1342,6 +1551,13 @@ function WorldService.Start()
 	end)
 	if not dragonOk then
 		warn(("[WorldService] Dragon system failed: %s"):format(tostring(dragonError)))
+	end
+
+	local moonOk, moonError = pcall(function()
+		createBloodMoon(decor, spawn.Position)
+	end)
+	if not moonOk then
+		warn(("[WorldService] Blood moon setup failed: %s"):format(tostring(moonError)))
 	end
 end
 
