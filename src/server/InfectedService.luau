@@ -983,13 +983,13 @@ local function applyExplosionDamage(center: Vector3, radius: number, maxDamage: 
 end
 
 local function emitSwordHitBlood(position: Vector3, fromDirection: Vector3)
-	local count = rng:NextInteger(11, 20)
+	local count = rng:NextInteger(24, 42)
 	local outward = if fromDirection.Magnitude > 0.001 then fromDirection.Unit else Vector3.new(0, 0, -1)
 
 	for _ = 1, count do
 		local blood = Instance.new("Part")
 		blood.Name = "SwordHitBlood"
-		local side = rng:NextNumber(0.07, 0.19)
+		local side = rng:NextNumber(0.08, 0.22)
 		blood.Size = Vector3.new(side, side, side)
 		blood.Shape = Enum.PartType.Ball
 		blood.Material = Enum.Material.SmoothPlastic
@@ -1006,42 +1006,42 @@ local function emitSwordHitBlood(position: Vector3, fromDirection: Vector3)
 		blood.Anchored = false
 		blood.CFrame = CFrame.new(position)
 			* CFrame.new(
-				rng:NextNumber(-0.22, 0.22),
-				rng:NextNumber(-0.12, 0.22),
-				rng:NextNumber(-0.22, 0.22)
+				rng:NextNumber(-0.28, 0.28),
+				rng:NextNumber(-0.14, 0.28),
+				rng:NextNumber(-0.28, 0.28)
 			)
 		blood.Parent = Workspace
 
 		local spread = Vector3.new(
-			rng:NextNumber(-0.95, 0.95),
-			rng:NextNumber(0.02, 1.15),
-			rng:NextNumber(-0.95, 0.95)
+			rng:NextNumber(-1.25, 1.25),
+			rng:NextNumber(0.08, 1.35),
+			rng:NextNumber(-1.25, 1.25)
 		)
-		local velocityDir = outward * 1.35 + spread
+		local velocityDir = outward * 1.6 + spread
 		if velocityDir.Magnitude < 0.001 then
 			velocityDir = Vector3.new(0, 1, 0)
 		end
 
-		blood.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(14, 30)
+		blood.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(20, 40)
 		blood.AssemblyAngularVelocity = Vector3.new(
-			rng:NextNumber(-22, 22),
-			rng:NextNumber(-22, 22),
-			rng:NextNumber(-22, 22)
+			rng:NextNumber(-28, 28),
+			rng:NextNumber(-28, 28),
+			rng:NextNumber(-28, 28)
 		)
-		Debris:AddItem(blood, 0.7)
+		Debris:AddItem(blood, 0.95)
 	end
 end
 
 local function emitSwordHitBossSparks(position: Vector3, fromDirection: Vector3)
 	local minCount = math.max(1, GameConfig.Player.AttackSparkCountMin)
 	local maxCount = math.max(minCount, GameConfig.Player.AttackSparkCountMax)
-	local count = rng:NextInteger(minCount + 4, maxCount + 9)
+	local count = rng:NextInteger(minCount + 16, maxCount + 28)
 	local outward = if fromDirection.Magnitude > 0.001 then fromDirection.Unit else Vector3.new(0, 0, -1)
 
 	for _ = 1, count do
 		local spark = Instance.new("Part")
 		spark.Name = "SwordHitBossSpark"
-		local side = rng:NextNumber(0.13, 0.3)
+		local side = rng:NextNumber(0.15, 0.36)
 		spark.Size = Vector3.new(side, side, side)
 		spark.Shape = Enum.PartType.Ball
 		spark.Material = Enum.Material.Neon
@@ -1058,29 +1058,29 @@ local function emitSwordHitBossSparks(position: Vector3, fromDirection: Vector3)
 		spark.Anchored = false
 		spark.CFrame = CFrame.new(position)
 			* CFrame.new(
-				rng:NextNumber(-0.18, 0.18),
-				rng:NextNumber(-0.18, 0.18),
-				rng:NextNumber(-0.18, 0.18)
+				rng:NextNumber(-0.24, 0.24),
+				rng:NextNumber(-0.24, 0.24),
+				rng:NextNumber(-0.24, 0.24)
 			)
 		spark.Parent = Workspace
 
 		local spread = Vector3.new(
-			rng:NextNumber(-1.05, 1.05),
-			rng:NextNumber(0.18, 1.45),
-			rng:NextNumber(-1.05, 1.05)
+			rng:NextNumber(-1.35, 1.35),
+			rng:NextNumber(0.22, 1.7),
+			rng:NextNumber(-1.35, 1.35)
 		)
-		local velocityDir = outward * 2.2 + spread
+		local velocityDir = outward * 2.8 + spread
 		if velocityDir.Magnitude < 0.001 then
 			velocityDir = Vector3.new(0, 1, 0)
 		end
 
-		spark.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(28, 50)
+		spark.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(36, 64)
 		spark.AssemblyAngularVelocity = Vector3.new(
-			rng:NextNumber(-34, 34),
-			rng:NextNumber(-34, 34),
-			rng:NextNumber(-34, 34)
+			rng:NextNumber(-42, 42),
+			rng:NextNumber(-42, 42),
+			rng:NextNumber(-42, 42)
 		)
-		Debris:AddItem(spark, 0.95)
+		Debris:AddItem(spark, 1.2)
 	end
 end
 
