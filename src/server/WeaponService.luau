@@ -17,7 +17,7 @@ local swordWeaponName = "Jedi Lightsaber"
 local weaponTag = "IsMeleeWeapon"
 local versionAttribute = "WeaponVersion"
 local weaponVersion = 9
-local swordWeaponVersion = 1
+local swordWeaponVersion = 4
 local destructibleAttribute = "DestructibleByGrenade"
 local legacyWeaponNames = {
 	"Rusty Pipe",
@@ -30,6 +30,99 @@ local playerLastSwordSwingTime: { [Player]: number } = {}
 local activeGetAimPointForPlayer: ((player: Player) -> Vector3?)?
 local activeOnGrenadeImpact: ((player: Player, impactPosition: Vector3) -> ())?
 local activeOnSwordAttack: ((player: Player) -> ())?
+
+local function findMotor(character: Model, names: { string }): Motor6D?
+	for _, name in names do
+		local instance = character:FindFirstChild(name, true)
+		if instance and instance:IsA("Motor6D") then
+			return instance
+		end
+	end
+	return nil
+end
+
+local function playCharacterSwordSlashAnimation(character: Model)
+	if character:GetAttribute("SwordBodySwinging") == true then
+		return
+	end
+
+	local shoulder = findMotor(character, { "RightShoulder", "Right Shoulder" })
+	if not shoulder then
+		return
+	end
+	local elbow = findMotor(character, { "RightElbow", "Right Elbow" })
+	local waist = findMotor(character, { "Waist" })
+
+	character:SetAttribute("SwordBodySwinging", true)
+
+	task.spawn(function()
+		local shoulderBase = shoulder.C0
+		local elbowBase = if elbow then elbow.C0 else nil
+		local waistBase = if waist then waist.C0 else nil
+
+		local shoulderWindup = shoulderBase * CFrame.Angles(math.rad(-124), math.rad(22), math.rad(38))
+		local shoulderSlash = shoulderBase * CFrame.Angles(math.rad(56), math.rad(-24), math.rad(-24))
+		local shoulderFollow = shoulderBase * CFrame.Angles(math.rad(22), math.rad(-10), math.rad(-7))
+
+		local elbowWindup = if elbowBase then elbowBase * CFrame.Angles(math.rad(-52), 0, math.rad(10)) else nil
+		local elbowSlash = if elbowBase then elbowBase * CFrame.Angles(math.rad(92), 0, math.rad(-8)) else nil
+		local elbowFollow = if elbowBase then elbowBase * CFrame.Angles(math.rad(52), 0, math.rad(-2)) else nil
+
+		local waistWindup = if waistBase then waistBase * CFrame.Angles(0, math.rad(22), 0) else nil
+		local waistSlash = if waistBase then waistBase * CFrame.Angles(0, math.rad(-28), 0) else nil
+		local waistFollow = if waistBase then waistBase * CFrame.Angles(0, math.rad(-12), 0) else nil
+
+		local function runPhase(
+			duration: number,
+			fromShoulder: CFrame,
+			toShoulder: CFrame,
+			fromElbow: CFrame?,
+			toElbow: CFrame?,
+			fromWaist: CFrame?,
+			toWaist: CFrame?
+		)
+			local startTime = os.clock()
+			while true do
+				if not shoulder.Parent then
+					break
+				end
+
+				local alpha = math.clamp((os.clock() - startTime) / duration, 0, 1)
+				local eased = 1 - (1 - alpha) * (1 - alpha) * (1 - alpha)
+				shoulder.C0 = fromShoulder:Lerp(toShoulder, eased)
+
+				if elbow and elbow.Parent and fromElbow and toElbow then
+					elbow.C0 = fromElbow:Lerp(toElbow, eased)
+				end
+
+				if waist and waist.Parent and fromWaist and toWaist then
+					waist.C0 = fromWaist:Lerp(toWaist, eased)
+				end
+
+				if alpha >= 1 then
+					break
+				end
+				RunService.Heartbeat:Wait()
+			end
+		end
+
+		runPhase(0.085, shoulderBase, shoulderWindup, elbowBase, elbowWindup, waistBase, waistWindup)
+		runPhase(0.09, shoulderWindup, shoulderSlash, elbowWindup, elbowSlash, waistWindup, waistSlash)
+		runPhase(0.07, shoulderSlash, shoulderFollow, elbowSlash, elbowFollow, waistSlash, waistFollow)
+		runPhase(0.12, shoulderFollow, shoulderBase, elbowFollow, elbowBase, waistFollow, waistBase)
+
+		if shoulder.Parent then
+			shoulder.C0 = shoulderBase
+		end
+		if elbow and elbow.Parent and elbowBase then
+			elbow.C0 = elbowBase
+		end
+		if waist and waist.Parent and waistBase then
+			waist.C0 = waistBase
+		end
+		character:SetAttribute("SwordBodySwinging", false)
+	end)
+end
 
 local function isLegacyName(name: string): boolean
 	for _, legacyName in legacyWeaponNames do
@@ -98,29 +191,38 @@ local function playRecoilAnimation(tool: Tool)
 	end)
 end
 
-local function playSwordSwingAnimation(tool: Tool)
+local function playSwordSwingAnimation(tool: Tool, character: Model)
 	if tool:GetAttribute("Swinging") == true then
 		return
 	end
 
 	tool:SetAttribute("Swinging", true)
 	local baseGrip = tool.Grip
+	playCharacterSwordSlashAnimation(character)
 
 	task.spawn(function()
-		for i = 1, 4 do
-			local alpha = i / 4
-			local swing = CFrame.new(-0.03 * alpha, -0.02 * alpha, 0.08 * alpha)
-				* CFrame.Angles(math.rad(12 * alpha), 0, math.rad(-34 * alpha))
-			tool.Grip = baseGrip * swing
-			task.wait(0.018)
+		for i = 1, 5 do
+			local alpha = i / 5
+			local windup = CFrame.new(0.1 * alpha, 0.07 * alpha, -0.34 * alpha)
+				* CFrame.Angles(math.rad(26 * alpha), math.rad(8 * alpha), math.rad(-34 * alpha))
+			tool.Grip = baseGrip * windup
+			task.wait(0.01)
+		end
+
+		for i = 1, 3 do
+			local alpha = i / 3
+			local strike = CFrame.new(-0.04 * alpha, -0.16 * alpha, 1.04 * alpha)
+				* CFrame.Angles(math.rad(-66 * alpha), math.rad(-6 * alpha), math.rad(34 * alpha))
+			tool.Grip = baseGrip * strike
+			task.wait(0.008)
 		end
 
 		for i = 1, 6 do
 			local alpha = i / 6
-			local swing = CFrame.new(-0.03 * (1 - alpha), -0.02 * (1 - alpha), 0.08 * (1 - alpha))
-				* CFrame.Angles(math.rad(12 * (1 - alpha)), 0, math.rad(-34 * (1 - alpha)))
-			tool.Grip = baseGrip * swing
-			task.wait(0.018)
+			local recover = CFrame.new(-0.04 * (1 - alpha), -0.16 * (1 - alpha), 1.04 * (1 - alpha))
+				* CFrame.Angles(math.rad(-66 * (1 - alpha)), math.rad(-6 * (1 - alpha)), math.rad(34 * (1 - alpha)))
+			tool.Grip = baseGrip * recover
+			task.wait(0.013)
 		end
 
 		tool.Grip = baseGrip
@@ -664,7 +766,7 @@ local function trySwingSword(player: Player, tool: Tool): boolean
 	end
 	playerLastSwordSwingTime[player] = now
 
-	playSwordSwingAnimation(tool)
+	playSwordSwingAnimation(tool, character)
 	onSwordAttack(player)
 	return true
 end

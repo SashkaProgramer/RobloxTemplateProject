@@ -120,6 +120,24 @@ local function canSeeTarget(fromPos: Vector3, forward: Vector3, targetRoot: Base
 	return hit == nil
 end
 
+local function hasClearHitPath(fromPos: Vector3, targetRoot: BasePart, sourceCharacter: Model?): boolean
+	local toTarget = targetRoot.Position - fromPos
+	if toTarget.Magnitude <= 0.001 then
+		return true
+	end
+
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	local filter: { Instance } = { targetRoot.Parent :: Instance }
+	if sourceCharacter then
+		table.insert(filter, sourceCharacter)
+	end
+	rayParams.FilterDescendantsInstances = filter
+
+	local hit = Workspace:Raycast(fromPos, toTarget, rayParams)
+	return hit == nil
+end
+
 local function detectPlayer(agent: InfectedAgent): (Player?, Vector3?)
 	local fromPos = agent.root.Position
 	local forward = agent.root.CFrame.LookVector
@@ -551,6 +569,93 @@ local function applyExplosionDamage(center: Vector3, radius: number, maxDamage: 
 	return hitCount
 end
 
+local function emitSwordHitSparks(position: Vector3, fromDirection: Vector3)
+	local minCount = math.max(1, GameConfig.Player.AttackSparkCountMin)
+	local maxCount = math.max(minCount, GameConfig.Player.AttackSparkCountMax)
+	local count = rng:NextInteger(minCount, maxCount)
+	local outward = if fromDirection.Magnitude > 0.001 then fromDirection.Unit else Vector3.new(0, 0, -1)
+
+	for _ = 1, count do
+		local spark = Instance.new("Part")
+		spark.Name = "SwordHitSpark"
+		local side = rng:NextNumber(0.06, 0.14)
+		spark.Size = Vector3.new(side, side, side)
+		spark.Shape = Enum.PartType.Ball
+		spark.Material = Enum.Material.Neon
+		spark.Color = Color3.fromRGB(
+			rng:NextInteger(245, 255),
+			rng:NextInteger(178, 226),
+			rng:NextInteger(86, 138)
+		)
+		spark.TopSurface = Enum.SurfaceType.Smooth
+		spark.BottomSurface = Enum.SurfaceType.Smooth
+		spark.CanCollide = true
+		spark.CanQuery = false
+		spark.CanTouch = false
+		spark.Anchored = false
+		spark.CFrame = CFrame.new(position)
+			* CFrame.new(
+				rng:NextNumber(-0.18, 0.18),
+				rng:NextNumber(-0.18, 0.18),
+				rng:NextNumber(-0.18, 0.18)
+			)
+		spark.Parent = Workspace
+
+		local spread = Vector3.new(
+			rng:NextNumber(-0.85, 0.85),
+			rng:NextNumber(0.15, 1.25),
+			rng:NextNumber(-0.85, 0.85)
+		)
+		local velocityDir = outward * 1.7 + spread
+		if velocityDir.Magnitude < 0.001 then
+			velocityDir = Vector3.new(0, 1, 0)
+		end
+
+		spark.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(20, 36)
+		spark.AssemblyAngularVelocity = Vector3.new(
+			rng:NextNumber(-26, 26),
+			rng:NextNumber(-26, 26),
+			rng:NextNumber(-26, 26)
+		)
+		Debris:AddItem(spark, 0.7)
+	end
+end
+
+local function findLineAttackTarget(
+	origin: Vector3,
+	forward: Vector3,
+	sourceCharacter: Model?
+): (InfectedAgent?, Vector3?)
+	local range = math.max(0.5, GameConfig.Player.AttackRange)
+	local radius = math.max(0.5, GameConfig.Player.AttackLineRadius)
+	local unitForward = if forward.Magnitude > 0.001 then forward.Unit else Vector3.new(0, 0, -1)
+
+	local bestAgent: InfectedAgent? = nil
+	local bestHitPosition: Vector3? = nil
+	local bestScore = math.huge
+
+	for _, agent in agents do
+		if agent.alive and agent.model.Parent then
+			local toTarget = agent.root.Position - origin
+			local forwardDistance = toTarget:Dot(unitForward)
+			if forwardDistance >= 0 and forwardDistance <= range then
+				local projected = origin + unitForward * forwardDistance
+				local lateralDistance = (agent.root.Position - projected).Magnitude
+				if lateralDistance <= radius and hasClearHitPath(origin, agent.root, sourceCharacter) then
+					local score = forwardDistance + lateralDistance * 0.7
+					if score < bestScore then
+						bestScore = score
+						bestAgent = agent
+						bestHitPosition = projected
+					end
+				end
+			end
+		end
+	end
+
+	return bestAgent, bestHitPosition
+end
+
 local function processAttack(agent: InfectedAgent, dt: number)
 	agent.damageCooldown = math.max(0, agent.damageCooldown - dt)
 	agent.attackWindup = math.max(0, agent.attackWindup - dt)
@@ -660,24 +765,20 @@ function InfectedService.TryPlayerAttack(player: Player): boolean
 		return false
 	end
 
-	local bestAgent: InfectedAgent? = nil
-	local nearestDistance = math.huge
-
-	for _, agent in agents do
-		if agent.alive and agent.model.Parent then
-			local distance = (agent.root.Position - root.Position).Magnitude
-			if distance <= GameConfig.Player.AttackRange and distance < nearestDistance then
-				nearestDistance = distance
-				bestAgent = agent
-			end
-		end
-	end
+	local origin = root.Position + Vector3.new(0, GameConfig.Player.AttackLineVerticalOffset, 0)
+	local bestAgent, hitPosition = findLineAttackTarget(origin, root.CFrame.LookVector, player.Character)
 
 	if not bestAgent then
 		return false
 	end
 
-	return applyDamageToInfected(bestAgent, GameConfig.Player.AttackDamage)
+	local didHit = applyDamageToInfected(bestAgent, GameConfig.Player.AttackDamage)
+	if didHit then
+		local sparkFrom = bestAgent.root.Position + Vector3.new(0, 1, 0)
+		local sparkPos = if hitPosition then hitPosition else sparkFrom
+		emitSwordHitSparks(sparkPos, sparkFrom - origin)
+	end
+	return didHit
 end
 
 function InfectedService.TryPlayerGrenadeAttack(player: Player, impactPosition: Vector3?): boolean
