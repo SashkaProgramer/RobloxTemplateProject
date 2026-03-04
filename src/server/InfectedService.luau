@@ -19,6 +19,7 @@ type InfectedAgent = {
 	model: Model,
 	root: BasePart,
 	groanSound: Sound,
+	groanBaseVolume: number,
 	groanCooldown: number,
 	wasPlayerNear: boolean,
 	groanPlaybackSpeedMin: number,
@@ -68,6 +69,12 @@ local rootPartName = "HumanoidRootPart"
 local rng = Random.new()
 local eyeIdleColor = Color3.fromRGB(214, 214, 120)
 local eyeAttackColor = Color3.fromRGB(255, 74, 74)
+local normalGroanDistortionLevel = 0.12
+local bossGroanDistortionLevel = 0.2
+local normalGroanReverbDecay = 1.8
+local bossGroanReverbDecay = 2.5
+local normalGroanReverbWet = -3
+local bossGroanReverbWet = -2.2
 
 local agents: { InfectedAgent } = {}
 local heartbeatConnection: RBXScriptConnection?
@@ -383,18 +390,212 @@ local function randomGroanInterval(chasing: boolean): number
 	return rng:NextNumber(minInterval, maxInterval)
 end
 
+local function randomGroanVariant(): { [string]: any }?
+	local variants = GameConfig.Infected.GroanVariants
+	if typeof(variants) ~= "table" then
+		return nil
+	end
+
+	local totalWeight = 0
+	for _, variant in variants do
+		if typeof(variant) == "table" then
+			local soundId = variant.SoundId
+			if typeof(soundId) == "string" and soundId ~= "" then
+				local weightValue = variant.Weight
+				local weight = if typeof(weightValue) == "number" and weightValue > 0 then weightValue else 1
+				totalWeight += weight
+			end
+		end
+	end
+
+	if totalWeight <= 0 then
+		return nil
+	end
+
+	local pickedWeight = rng:NextNumber(0, totalWeight)
+	local accumulatedWeight = 0
+	local fallbackVariant: { [string]: any }? = nil
+
+	for _, variant in variants do
+		if typeof(variant) == "table" then
+			local soundId = variant.SoundId
+			if typeof(soundId) == "string" and soundId ~= "" then
+				local weightValue = variant.Weight
+				local weight = if typeof(weightValue) == "number" and weightValue > 0 then weightValue else 1
+				accumulatedWeight += weight
+				fallbackVariant = variant
+				if pickedWeight <= accumulatedWeight then
+					return variant
+				end
+			end
+		end
+	end
+
+	return fallbackVariant
+end
+
 local function playGroan(agent: InfectedAgent)
 	local sound = agent.groanSound
+	local variant = randomGroanVariant()
+	local nextSoundId = GameConfig.Infected.GroanSoundId
+	if variant then
+		local variantSoundId = variant.SoundId
+		if typeof(variantSoundId) == "string" and variantSoundId ~= "" then
+			nextSoundId = variantSoundId
+		end
+	end
+	sound.SoundId = nextSoundId
 	if sound.SoundId == "" then
 		return
 	end
+
 	local minSpeed = math.max(0.05, agent.groanPlaybackSpeedMin)
 	local maxSpeed = math.max(minSpeed + 0.01, agent.groanPlaybackSpeedMax)
+	local volumeMultiplier = 1
+	local distortionLevel = if agent.archetype == "baium" then bossGroanDistortionLevel else normalGroanDistortionLevel
+	local reverbDecay = if agent.archetype == "baium" then bossGroanReverbDecay else normalGroanReverbDecay
+	local reverbWet = if agent.archetype == "baium" then bossGroanReverbWet else normalGroanReverbWet
+	local echoDelay = 0.1
+	local echoFeedback = 0.18
+	local eqLowGain = 0
+	local eqMidGain = 0
+	local eqHighGain = 0
+
+	if variant then
+		local variantMinSpeed = variant.PlaybackSpeedMin
+		if typeof(variantMinSpeed) == "number" then
+			minSpeed = math.max(0.05, variantMinSpeed)
+		end
+
+		local variantMaxSpeed = variant.PlaybackSpeedMax
+		if typeof(variantMaxSpeed) == "number" then
+			maxSpeed = math.max(minSpeed + 0.01, variantMaxSpeed)
+		end
+
+		local variantVolumeMultiplier = variant.VolumeMultiplier
+		if typeof(variantVolumeMultiplier) == "number" then
+			volumeMultiplier = math.max(0, variantVolumeMultiplier)
+		end
+
+		local variantDistortion = variant.DistortionLevel
+		if typeof(variantDistortion) == "number" then
+			distortionLevel = math.clamp(variantDistortion, 0, 1)
+		end
+
+		local variantReverbDecay = variant.ReverbDecay
+		if typeof(variantReverbDecay) == "number" then
+			reverbDecay = math.clamp(variantReverbDecay, 0.1, 20)
+		end
+
+		local variantReverbWet = variant.ReverbWet
+		if typeof(variantReverbWet) == "number" then
+			reverbWet = math.clamp(variantReverbWet, -80, 10)
+		end
+
+		local variantEchoDelay = variant.EchoDelay
+		if typeof(variantEchoDelay) == "number" then
+			echoDelay = math.clamp(variantEchoDelay, 0, 5)
+		end
+
+		local variantEchoFeedback = variant.EchoFeedback
+		if typeof(variantEchoFeedback) == "number" then
+			echoFeedback = math.clamp(variantEchoFeedback, 0, 1)
+		end
+
+		local variantEqLowGain = variant.EqLowGain
+		if typeof(variantEqLowGain) == "number" then
+			eqLowGain = math.clamp(variantEqLowGain, -80, 10)
+		end
+
+		local variantEqMidGain = variant.EqMidGain
+		if typeof(variantEqMidGain) == "number" then
+			eqMidGain = math.clamp(variantEqMidGain, -80, 10)
+		end
+
+		local variantEqHighGain = variant.EqHighGain
+		if typeof(variantEqHighGain) == "number" then
+			eqHighGain = math.clamp(variantEqHighGain, -80, 10)
+		end
+	end
+
+	maxSpeed = math.max(minSpeed + 0.01, maxSpeed)
+	sound.Volume = agent.groanBaseVolume * volumeMultiplier
 	sound.PlaybackSpeed = rng:NextNumber(minSpeed, maxSpeed)
+
+	local distortion = sound:FindFirstChildWhichIsA("DistortionSoundEffect")
+	if distortion then
+		distortion.Level = distortionLevel
+	end
+
+	local reverb = sound:FindFirstChildWhichIsA("ReverbSoundEffect")
+	if reverb then
+		reverb.DecayTime = reverbDecay
+		reverb.WetLevel = reverbWet
+	end
+
+	local echo = sound:FindFirstChildWhichIsA("EchoSoundEffect")
+	if echo then
+		echo.Delay = echoDelay
+		echo.Feedback = echoFeedback
+	end
+
+	local equalizer = sound:FindFirstChildWhichIsA("EqualizerSoundEffect")
+	if equalizer then
+		equalizer.LowGain = eqLowGain
+		equalizer.MidGain = eqMidGain
+		equalizer.HighGain = eqHighGain
+	end
+
 	if sound.IsPlaying then
 		sound:Stop()
 	end
 	sound:Play()
+
+	if variant and variant.Name == "PigSqueal" then
+		local burstCountMinValue = variant.BurstCountMin
+		local burstCountMin = if typeof(burstCountMinValue) == "number" then math.max(1, math.floor(burstCountMinValue)) else 1
+		local burstCountMaxValue = variant.BurstCountMax
+		local burstCountMax = if typeof(burstCountMaxValue) == "number"
+			then math.max(burstCountMin, math.floor(burstCountMaxValue))
+			else burstCountMin
+		local burstCount = rng:NextInteger(burstCountMin, burstCountMax)
+		if burstCount > 1 then
+			local burstGapMinValue = variant.BurstGapMin
+			local burstGapMin = if typeof(burstGapMinValue) == "number" then math.max(0.02, burstGapMinValue) else 0.05
+			local burstGapMaxValue = variant.BurstGapMax
+			local burstGapMax = if typeof(burstGapMaxValue) == "number"
+				then math.max(burstGapMin + 0.005, burstGapMaxValue)
+				else burstGapMin + 0.06
+			local burstSpeedJitterValue = variant.BurstSpeedJitter
+			local burstSpeedJitter = if typeof(burstSpeedJitterValue) == "number"
+				then math.clamp(burstSpeedJitterValue, 0, 0.45)
+				else 0.18
+			local burstVolumeDecayValue = variant.BurstVolumeDecay
+			local burstVolumeDecay = if typeof(burstVolumeDecayValue) == "number"
+				then math.clamp(burstVolumeDecayValue, 0.45, 1)
+				else 0.9
+			local baseVolume = agent.groanBaseVolume * volumeMultiplier
+			local delayAccum = 0
+
+			for burstIndex = 2, burstCount do
+				delayAccum += rng:NextNumber(burstGapMin, burstGapMax)
+				task.delay(delayAccum, function()
+					if not agent.alive or not sound.Parent then
+						return
+					end
+					local jitterScale = rng:NextNumber(1 - burstSpeedJitter, 1 + burstSpeedJitter)
+					local burstMinSpeed = math.max(0.05, minSpeed * jitterScale)
+					local burstMaxSpeed = math.max(burstMinSpeed + 0.01, maxSpeed * jitterScale)
+					sound.PlaybackSpeed = rng:NextNumber(burstMinSpeed, burstMaxSpeed)
+					sound.Volume = baseVolume * (burstVolumeDecay ^ (burstIndex - 1))
+					if sound.IsPlaying then
+						sound:Stop()
+					end
+					sound:Play()
+				end)
+			end
+		end
+	end
 end
 
 local function isPlayerNear(agent: InfectedAgent, maxDistance: number): boolean
@@ -925,25 +1126,39 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 	local groanSound = Instance.new("Sound")
 	groanSound.Name = "Groan"
 	groanSound.SoundId = GameConfig.Infected.GroanSoundId
-	groanSound.Volume = if isBoss
+	local groanBaseVolume = if isBoss
 		then GameConfig.Infected.GroanVolume * bossConfig.GroanVolumeMultiplier
 		else GameConfig.Infected.GroanVolume
+	groanSound.Volume = groanBaseVolume
 	groanSound.RollOffMode = Enum.RollOffMode.InverseTapered
 	groanSound.RollOffMinDistance = GameConfig.Infected.GroanMinDistance
 	groanSound.RollOffMaxDistance = GameConfig.Infected.GroanMaxDistance
 	groanSound.Parent = root
 
 	local reverb = Instance.new("ReverbSoundEffect")
-	reverb.DecayTime = if isBoss then 2.5 else 1.8
+	reverb.DecayTime = if isBoss then bossGroanReverbDecay else normalGroanReverbDecay
 	reverb.Density = 0.45
 	reverb.Diffusion = 0.72
 	reverb.DryLevel = -1
-	reverb.WetLevel = -3
+	reverb.WetLevel = if isBoss then bossGroanReverbWet else normalGroanReverbWet
 	reverb.Parent = groanSound
 
 	local distortion = Instance.new("DistortionSoundEffect")
-	distortion.Level = if isBoss then 0.2 else 0.12
+	distortion.Level = if isBoss then bossGroanDistortionLevel else normalGroanDistortionLevel
 	distortion.Parent = groanSound
+
+	local equalizer = Instance.new("EqualizerSoundEffect")
+	equalizer.LowGain = 0
+	equalizer.MidGain = 0
+	equalizer.HighGain = 0
+	equalizer.Parent = groanSound
+
+	local echo = Instance.new("EchoSoundEffect")
+	echo.Delay = 0.1
+	echo.Feedback = 0.18
+	echo.WetLevel = -4
+	echo.DryLevel = 0
+	echo.Parent = groanSound
 
 	local attackDamage = if isBoss then bossConfig.Damage else GameConfig.Infected.Damage
 	local attackRange = if isBoss then bossConfig.AttackRange else GameConfig.Infected.AttackRange
@@ -974,6 +1189,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		model = model,
 		root = root,
 		groanSound = groanSound,
+		groanBaseVolume = groanBaseVolume,
 		groanCooldown = rng:NextNumber(0.6, 2.3),
 		wasPlayerNear = false,
 		groanPlaybackSpeedMin = groanPlaybackSpeedMin,
