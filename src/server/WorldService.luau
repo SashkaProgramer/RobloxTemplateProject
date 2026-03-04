@@ -3,6 +3,7 @@
 local Workspace = game:GetService("Workspace")
 
 local WorldService = {}
+local destructibleAttribute = "DestructibleByGrenade"
 
 local function ensureGround()
 	local existing = Workspace:FindFirstChild("Ground")
@@ -38,7 +39,9 @@ local function ensureSpawn()
 end
 
 local function createBlock(name: string, size: Vector3, position: Vector3, color: Color3)
-	if Workspace:FindFirstChild(name) then
+	local existing = Workspace:FindFirstChild(name)
+	if existing and existing:IsA("Part") then
+		existing:SetAttribute(destructibleAttribute, true)
 		return
 	end
 
@@ -49,6 +52,7 @@ local function createBlock(name: string, size: Vector3, position: Vector3, color
 	block.Anchored = true
 	block.Material = Enum.Material.Concrete
 	block.Color = color
+	block:SetAttribute(destructibleAttribute, true)
 	block.Parent = Workspace
 end
 

@@ -33,6 +33,7 @@ type InfectedAgent = {
 local InfectedService = {}
 
 local infectedFolderName = "Infected"
+local playerSpawnName = "StartSpawn"
 local rootPartName = "HumanoidRootPart"
 local rng = Random.new()
 local eyeIdleColor = Color3.fromRGB(214, 214, 120)
@@ -43,6 +44,7 @@ local heartbeatConnection: RBXScriptConnection?
 local activeFolder: Folder?
 local nextAgentId = 1
 local playerLastAttackTime: { [Player]: number } = {}
+local playerLastGrenadeAttackTime: { [Player]: number } = {}
 
 local function getCharacterRoot(player: Player): BasePart?
 	local character = player.Character
@@ -190,8 +192,47 @@ local function syncVisuals(agent: InfectedAgent)
 	end
 end
 
+local function getPlayerSpawnPosition(): Vector3
+	local spawn = Workspace:FindFirstChild(playerSpawnName)
+	if spawn and spawn:IsA("BasePart") then
+		return spawn.Position
+	end
+	return Vector3.new(0, 8, 0)
+end
+
+local function isFarEnoughFromPlayers(position: Vector3, minDistance: number): boolean
+	for _, player in Players:GetPlayers() do
+		local root = getCharacterRoot(player)
+		local humanoid = getHumanoid(player)
+		if root and humanoid and humanoid.Health > 0 then
+			if (root.Position - position).Magnitude < minDistance then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+local function randomSpawnPosition(): Vector3
+	local center = getPlayerSpawnPosition()
+	local minDistance = GameConfig.Infected.SpawnMinDistanceFromPlayer
+	local maxDistance = math.max(minDistance + 1, GameConfig.Infected.SpawnMaxDistanceFromPlayer)
+
+	for _ = 1, 20 do
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local distance = rng:NextNumber(minDistance, maxDistance)
+		local candidate = center + Vector3.new(math.cos(angle) * distance, 8, math.sin(angle) * distance)
+		if isFarEnoughFromPlayers(candidate, minDistance) then
+			return candidate
+		end
+	end
+
+	local fallbackDistance = maxDistance
+	return center + Vector3.new(rng:NextNumber(-fallbackDistance, fallbackDistance), 8, rng:NextNumber(-fallbackDistance, fallbackDistance))
+end
+
 local function spawnInfected(unitId: number, parent: Folder): InfectedAgent
-	local spawnPos = Vector3.new(rng:NextNumber(-70, 70), 8, rng:NextNumber(-70, 70))
+	local spawnPos = randomSpawnPosition()
 
 	local model = Instance.new("Model")
 	model.Name = ("Infected_%d"):format(unitId)
@@ -394,6 +435,25 @@ local function applyDamageToInfected(agent: InfectedAgent, amount: number): bool
 	return true
 end
 
+local function applyExplosionDamage(center: Vector3, radius: number, maxDamage: number): number
+	local hitCount = 0
+
+	for _, agent in agents do
+		if agent.alive and agent.model.Parent then
+			local distance = (agent.root.Position - center).Magnitude
+			if distance <= radius then
+				local falloff = 1 - (distance / radius)
+				local damage = math.max(8, maxDamage * falloff)
+				if applyDamageToInfected(agent, damage) then
+					hitCount += 1
+				end
+			end
+		end
+	end
+
+	return hitCount
+end
+
 local function processAttack(agent: InfectedAgent, dt: number)
 	agent.damageCooldown = math.max(0, agent.damageCooldown - dt)
 	agent.attackWindup = math.max(0, agent.attackWindup - dt)
@@ -489,9 +549,9 @@ local function updateAgent(agent: InfectedAgent, dt: number)
 end
 
 function InfectedService.TryPlayerAttack(player: Player): boolean
-	local now = os.clock()
-	local lastAttack = playerLastAttackTime[player] or 0
-	if now - lastAttack < GameConfig.Player.AttackCooldown then
+	local now = time()
+	local lastAttack = playerLastAttackTime[player]
+	if lastAttack and now - lastAttack < GameConfig.Player.AttackCooldown then
 		return false
 	end
 	playerLastAttackTime[player] = now
@@ -520,6 +580,39 @@ function InfectedService.TryPlayerAttack(player: Player): boolean
 	end
 
 	return applyDamageToInfected(bestAgent, GameConfig.Player.AttackDamage)
+end
+
+function InfectedService.TryPlayerGrenadeAttack(player: Player, impactPosition: Vector3?): boolean
+	local now = time()
+	local lastAttack = playerLastGrenadeAttackTime[player]
+	if lastAttack and now - lastAttack < GameConfig.Player.GrenadeCooldown then
+		return false
+	end
+	playerLastGrenadeAttackTime[player] = now
+
+	local root = getCharacterRoot(player)
+	local humanoid = getHumanoid(player)
+	if not root or not humanoid or humanoid.Health <= 0 then
+		return false
+	end
+
+	local center = impactPosition
+	if not center then
+		local origin = root.Position + Vector3.new(0, 1.4, 0) + root.CFrame.LookVector * 2
+		local direction = root.CFrame.LookVector
+		local rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Exclude
+		rayParams.FilterDescendantsInstances = { player.Character :: Model }
+		local ray = Workspace:Raycast(origin, direction * GameConfig.Player.GrenadeRange, rayParams)
+		center = if ray then ray.Position else (origin + direction * GameConfig.Player.GrenadeRange)
+	end
+
+	local hits = applyExplosionDamage(
+		center,
+		GameConfig.Player.GrenadeExplosionRadius,
+		GameConfig.Player.GrenadeDamage
+	)
+	return hits > 0
 end
 
 function InfectedService.Start()

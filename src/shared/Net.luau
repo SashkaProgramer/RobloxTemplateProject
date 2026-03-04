@@ -6,6 +6,8 @@ local Net = {
 		StateUpdate = "StateUpdate",
 		SetSprinting = "SetSprinting",
 		ScavengeResult = "ScavengeResult",
+		MedkitPickup = "MedkitPickup",
+		AimUpdate = "AimUpdate",
 		PlayerAttack = "PlayerAttack",
 		AttackFeedback = "AttackFeedback",
 	},
