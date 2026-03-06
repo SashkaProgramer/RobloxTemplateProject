@@ -12,8 +12,8 @@ local GameConfig = require(Shared:WaitForChild("GameConfig"))
 
 local WeaponService = {}
 
-local weaponName = "Grenade Launcher"
-local swordWeaponName = "Jedi Lightsaber"
+local weaponName = "Pulse Launcher"
+local swordWeaponName = "Energy Blade"
 local weaponTag = "IsMeleeWeapon"
 local versionAttribute = "WeaponVersion"
 local weaponVersion = 9
@@ -557,7 +557,7 @@ local function createGrenadeLauncherTool(): Tool
 	tool:SetAttribute(versionAttribute, weaponVersion)
 	tool.RequiresHandle = true
 	tool.CanBeDropped = false
-	tool.ToolTip = "Grenade launcher"
+	tool.ToolTip = "Pulse launcher"
 	tool.Grip = CFrame.new(0.06, -0.34, -0.66)
 
 	local handle = Instance.new("Part")
@@ -778,7 +778,7 @@ local function createSwordTool(): Tool
 	tool:SetAttribute(versionAttribute, swordWeaponVersion)
 	tool.RequiresHandle = true
 	tool.CanBeDropped = false
-	tool.ToolTip = "Glowing Jedi lightsaber"
+	tool.ToolTip = "Glowing energy blade"
 	tool.Grip = CFrame.new(0.08, -1.0, -0.18) * CFrame.Angles(0, math.rad(90), 0)
 
 	local handle = Instance.new("Part")

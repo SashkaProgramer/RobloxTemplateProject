@@ -62,7 +62,7 @@ type InfectedAgent = {
 
 local InfectedService = {}
 
-local infectedFolderName = "Infected"
+local infectedFolderName = "Roamers"
 local playerSpawnName = "StartSpawn"
 local groundPartName = "Ground"
 local rootPartName = "HumanoidRootPart"
@@ -250,30 +250,30 @@ local function syncVisuals(agent: InfectedAgent)
 			local counterStride = math.sin(walkPhase + math.pi)
 			local strideDouble = math.sin(walkPhase * 2)
 
-			if entry.part.Name == "BayumLeftLeg" then
+			if entry.part.Name == "TitanLeftLeg" then
 				local lift = math.max(0, counterStride) * 0.42 * moveBlend
 				offset = offset
 					* CFrame.new(0, lift, 0)
 					* CFrame.Angles(math.rad(22 * stride * moveBlend), 0, 0)
-			elseif entry.part.Name == "BayumRightLeg" then
+			elseif entry.part.Name == "TitanRightLeg" then
 				local lift = math.max(0, stride) * 0.42 * moveBlend
 				offset = offset
 					* CFrame.new(0, lift, 0)
 					* CFrame.Angles(math.rad(22 * counterStride * moveBlend), 0, 0)
-			elseif entry.part.Name == "BayumLeftArm" or entry.part.Name == "BayumLeftForearm" then
+			elseif entry.part.Name == "TitanLeftArm" or entry.part.Name == "TitanLeftForearm" then
 				offset = offset * CFrame.Angles(math.rad(-16 * counterStride * moveBlend), 0, 0)
-			elseif entry.part.Name == "BayumRightArm" or entry.part.Name == "BayumRightForearm" then
+			elseif entry.part.Name == "TitanRightArm" or entry.part.Name == "TitanRightForearm" then
 				offset = offset * CFrame.Angles(math.rad(-16 * stride * moveBlend), 0, 0)
-			elseif entry.part.Name == "BayumTorso" then
+			elseif entry.part.Name == "TitanTorso" then
 				local bob = math.abs(stride) * 0.19 * moveBlend
 				offset = offset
 					* CFrame.new(0, bob, 0)
 					* CFrame.Angles(math.rad(2.8 * strideDouble * moveBlend), 0, 0)
-			elseif entry.part.Name == "BayumHead" then
+			elseif entry.part.Name == "TitanHead" then
 				offset = offset * CFrame.Angles(math.rad(-3.2 * strideDouble * moveBlend), 0, 0)
-			elseif entry.part.Name == "BayumAuraRingOuter" then
+			elseif entry.part.Name == "TitanAuraRingOuter" then
 				offset = offset * CFrame.Angles(0, walkPhase * 0.65, 0)
-			elseif entry.part.Name == "BayumAuraRingInner" then
+			elseif entry.part.Name == "TitanAuraRingInner" then
 				offset = offset * CFrame.Angles(0, -walkPhase * 0.85, 0)
 			end
 		else
@@ -755,7 +755,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 	if isBoss then
 		model.Name = ("%s_%d"):format(bossConfig.Name, unitId)
 	else
-		model.Name = ("Infected_%d"):format(unitId)
+		model.Name = ("Roamer_%d"):format(unitId)
 	end
 	model.Parent = parent
 
@@ -783,119 +783,119 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 
 		local torso = createBodyPart(
 			model,
-			"BayumTorso",
+			"TitanTorso",
 			Vector3.new(6.8, 7.6, 3.8),
 			armorDark,
 			Enum.Material.Metal
 		)
 		local chestPlate = createBodyPart(
 			model,
-			"BayumChestPlate",
+			"TitanChestPlate",
 			Vector3.new(5.3, 3.8, 1.05),
 			armorGold,
 			Enum.Material.Metal
 		)
 		local abdomenPlate = createBodyPart(
 			model,
-			"BayumAbdomenPlate",
+			"TitanAbdomenPlate",
 			Vector3.new(4.3, 2, 0.82),
 			armorTrim,
 			Enum.Material.Metal
 		)
 		local head = createBodyPart(
 			model,
-			"BayumHead",
+			"TitanHead",
 			Vector3.new(3.4, 3.2, 3),
 			skinColor,
 			Enum.Material.SmoothPlastic
 		)
 		local jaw = createBodyPart(
 			model,
-			"BayumJaw",
+			"TitanJaw",
 			Vector3.new(2.7, 1.1, 1.7),
 			boneColor,
 			Enum.Material.SmoothPlastic
 		)
 		local leftArm = createBodyPart(
 			model,
-			"BayumLeftArm",
+			"TitanLeftArm",
 			Vector3.new(1.9, 6.1, 1.9),
 			armorDark,
 			Enum.Material.Metal
 		)
 		local leftForearm = createBodyPart(
 			model,
-			"BayumLeftForearm",
+			"TitanLeftForearm",
 			Vector3.new(2.15, 4.7, 2.15),
 			armorGold,
 			Enum.Material.Metal
 		)
 		local rightArm = createBodyPart(
 			model,
-			"BayumRightArm",
+			"TitanRightArm",
 			Vector3.new(1.9, 6.1, 1.9),
 			armorDark,
 			Enum.Material.Metal
 		)
 		local rightForearm = createBodyPart(
 			model,
-			"BayumRightForearm",
+			"TitanRightForearm",
 			Vector3.new(2.15, 4.7, 2.15),
 			armorGold,
 			Enum.Material.Metal
 		)
 		local leftLeg = createBodyPart(
 			model,
-			"BayumLeftLeg",
+			"TitanLeftLeg",
 			Vector3.new(2.4, 7.3, 2.4),
 			armorDark,
 			Enum.Material.Metal
 		)
 		local rightLeg = createBodyPart(
 			model,
-			"BayumRightLeg",
+			"TitanRightLeg",
 			Vector3.new(2.4, 7.3, 2.4),
 			armorDark,
 			Enum.Material.Metal
 		)
 		local leftPauldron = createBodyPart(
 			model,
-			"BayumLeftPauldron",
+			"TitanLeftPauldron",
 			Vector3.new(2.9, 1.4, 3.2),
 			armorTrim,
 			Enum.Material.Metal
 		)
 		local rightPauldron = createBodyPart(
 			model,
-			"BayumRightPauldron",
+			"TitanRightPauldron",
 			Vector3.new(2.9, 1.4, 3.2),
 			armorTrim,
 			Enum.Material.Metal
 		)
 		local capeUpper = createBodyPart(
 			model,
-			"BayumCapeUpper",
+			"TitanCapeUpper",
 			Vector3.new(5.4, 3.6, 0.45),
 			capeColor,
 			Enum.Material.Fabric
 		)
 		local capeLower = createBodyPart(
 			model,
-			"BayumCapeLower",
+			"TitanCapeLower",
 			Vector3.new(6.0, 5.2, 0.45),
 			capeColor,
 			Enum.Material.Fabric
 		)
 		local crownBand = createBodyPart(
 			model,
-			"BayumCrownBand",
+			"TitanCrownBand",
 			Vector3.new(3.9, 0.55, 3.9),
 			armorTrim,
 			Enum.Material.Metal
 		)
 		local heartCore = createBodyPart(
 			model,
-			"BayumHeartCore",
+			"TitanHeartCore",
 			Vector3.new(0.92, 0.92, 0.92),
 			Color3.fromRGB(255, 78, 56),
 			Enum.Material.Neon
@@ -910,7 +910,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 
 		local auraRingOuter = createBodyPart(
 			model,
-			"BayumAuraRingOuter",
+			"TitanAuraRingOuter",
 			Vector3.new(16, 0.22, 16),
 			Color3.fromRGB(255, 72, 72),
 			Enum.Material.Neon
@@ -920,7 +920,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 
 		local auraRingInner = createBodyPart(
 			model,
-			"BayumAuraRingInner",
+			"TitanAuraRingInner",
 			Vector3.new(10, 0.2, 10),
 			Color3.fromRGB(255, 168, 78),
 			Enum.Material.Neon
@@ -975,14 +975,14 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 
 		leftEye = createBodyPart(
 			model,
-			"BayumLeftEye",
+			"TitanLeftEye",
 			Vector3.new(0.5, 0.5, 0.5),
 			eyeIdleColor,
 			Enum.Material.Neon
 		)
 		rightEye = createBodyPart(
 			model,
-			"BayumRightEye",
+			"TitanRightEye",
 			Vector3.new(0.5, 0.5, 0.5),
 			eyeIdleColor,
 			Enum.Material.Neon
@@ -1016,7 +1016,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 			local angle = ((i - 1) / 8) * math.pi * 2
 			local spike = createBodyPart(
 				model,
-				("BayumCrownSpike_%d"):format(i),
+				("TitanCrownSpike_%d"):format(i),
 				Vector3.new(0.24, 1.7, 0.24),
 				armorTrim,
 				Enum.Material.Metal
@@ -1256,7 +1256,7 @@ local function markDead(agent: InfectedAgent)
 
 			for _ = 1, count do
 				local cube = Instance.new("Part")
-				cube.Name = "InfectedDebrisCube"
+				cube.Name = "RoamerDebrisCube"
 				local side = if agent.archetype == "baium"
 					then rng:NextNumber(0.32, 0.72)
 					else rng:NextNumber(0.22, 0.45)
@@ -1362,7 +1362,7 @@ local function emitBossMagicCastFx(fromPos: Vector3, impactPos: Vector3)
 	local mid = fromPos + direction * 0.5
 
 	local beam = Instance.new("Part")
-	beam.Name = "BayumMagicBeam"
+	beam.Name = "TitanMagicBeam"
 	beam.Size = Vector3.new(0.5, 0.5, distance)
 	beam.Material = Enum.Material.Neon
 	beam.Color = Color3.fromRGB(255, 106, 120)
@@ -1376,7 +1376,7 @@ local function emitBossMagicCastFx(fromPos: Vector3, impactPos: Vector3)
 	Debris:AddItem(beam, 0.16)
 
 	local flash = Instance.new("Part")
-	flash.Name = "BayumMagicFlash"
+	flash.Name = "TitanMagicFlash"
 	flash.Shape = Enum.PartType.Ball
 	flash.Size = Vector3.new(1.8, 1.8, 1.8)
 	flash.Material = Enum.Material.Neon
@@ -1391,7 +1391,7 @@ local function emitBossMagicCastFx(fromPos: Vector3, impactPos: Vector3)
 	Debris:AddItem(flash, 0.18)
 
 	local impact = Instance.new("Part")
-	impact.Name = "BayumMagicImpact"
+	impact.Name = "TitanMagicImpact"
 	impact.Shape = Enum.PartType.Ball
 	impact.Size = Vector3.new(4.8, 4.8, 4.8)
 	impact.Material = Enum.Material.Neon
@@ -1424,35 +1424,35 @@ local function applyBossMagicDamage(center: Vector3, radius: number, maxDamage: 
 	end
 end
 
-local function emitSwordHitBlood(position: Vector3, fromDirection: Vector3)
+local function emitSwordHitBurst(position: Vector3, fromDirection: Vector3)
 	local count = rng:NextInteger(24, 42)
 	local outward = if fromDirection.Magnitude > 0.001 then fromDirection.Unit else Vector3.new(0, 0, -1)
 
 	for _ = 1, count do
-		local blood = Instance.new("Part")
-		blood.Name = "SwordHitBlood"
+		local burst = Instance.new("Part")
+		burst.Name = "SwordHitBurst"
 		local side = rng:NextNumber(0.08, 0.22)
-		blood.Size = Vector3.new(side, side, side)
-		blood.Shape = Enum.PartType.Ball
-		blood.Material = Enum.Material.SmoothPlastic
-		blood.Color = Color3.fromRGB(
-			rng:NextInteger(118, 176),
-			rng:NextInteger(12, 36),
-			rng:NextInteger(12, 28)
+		burst.Size = Vector3.new(side, side, side)
+		burst.Shape = Enum.PartType.Ball
+		burst.Material = Enum.Material.Neon
+		burst.Color = Color3.fromRGB(
+			rng:NextInteger(120, 220),
+			rng:NextInteger(180, 245),
+			rng:NextInteger(220, 255)
 		)
-		blood.TopSurface = Enum.SurfaceType.Smooth
-		blood.BottomSurface = Enum.SurfaceType.Smooth
-		blood.CanCollide = false
-		blood.CanQuery = false
-		blood.CanTouch = false
-		blood.Anchored = false
-		blood.CFrame = CFrame.new(position)
+		burst.TopSurface = Enum.SurfaceType.Smooth
+		burst.BottomSurface = Enum.SurfaceType.Smooth
+		burst.CanCollide = false
+		burst.CanQuery = false
+		burst.CanTouch = false
+		burst.Anchored = false
+		burst.CFrame = CFrame.new(position)
 			* CFrame.new(
 				rng:NextNumber(-0.28, 0.28),
 				rng:NextNumber(-0.14, 0.28),
 				rng:NextNumber(-0.28, 0.28)
 			)
-		blood.Parent = Workspace
+		burst.Parent = Workspace
 
 		local spread = Vector3.new(
 			rng:NextNumber(-1.25, 1.25),
@@ -1464,13 +1464,13 @@ local function emitSwordHitBlood(position: Vector3, fromDirection: Vector3)
 			velocityDir = Vector3.new(0, 1, 0)
 		end
 
-		blood.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(20, 40)
-		blood.AssemblyAngularVelocity = Vector3.new(
+		burst.AssemblyLinearVelocity = velocityDir.Unit * rng:NextNumber(20, 40)
+		burst.AssemblyAngularVelocity = Vector3.new(
 			rng:NextNumber(-28, 28),
 			rng:NextNumber(-28, 28),
 			rng:NextNumber(-28, 28)
 		)
-		Debris:AddItem(blood, 0.95)
+		Debris:AddItem(burst, 0.95)
 	end
 end
 
@@ -1530,7 +1530,7 @@ local function emitSwordHitImpactFx(agent: InfectedAgent, position: Vector3, fro
 	if agent.archetype == "baium" then
 		emitSwordHitBossSparks(position, fromDirection)
 	else
-		emitSwordHitBlood(position, fromDirection)
+		emitSwordHitBurst(position, fromDirection)
 	end
 end
 

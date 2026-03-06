@@ -18,9 +18,9 @@ local birdMaxAltitude = 96
 local treeCount = 72
 local shrubCount = 220
 local grassPatchCount = 170
-local bloodMoonDistance = 240
-local bloodMoonAltitude = 210
-local bloodMoonSize = 96
+local redMoonDistance = 240
+local redMoonAltitude = 210
+local redMoonSize = 96
 local dragonOrbitRadius = 140
 local dragonMinAltitude = 68
 local dragonMaxAltitude = 88
@@ -1421,14 +1421,14 @@ local function createCitySilhouette(parent: Folder)
 	end
 end
 
-local function createBloodMoon(parent: Folder, spawnPos: Vector3)
+local function createRedMoon(parent: Folder, spawnPos: Vector3)
 	local moonDirection = Vector3.new(0.2, 0, -0.98).Unit
-	local moonCenter = spawnPos + moonDirection * bloodMoonDistance + Vector3.new(0, bloodMoonAltitude, 0)
+	local moonCenter = spawnPos + moonDirection * redMoonDistance + Vector3.new(0, redMoonAltitude, 0)
 
 	local moonCore = Instance.new("Part")
-	moonCore.Name = "BloodMoon"
+	moonCore.Name = "RedMoon"
 	moonCore.Shape = Enum.PartType.Ball
-	moonCore.Size = Vector3.new(bloodMoonSize, bloodMoonSize, bloodMoonSize)
+	moonCore.Size = Vector3.new(redMoonSize, redMoonSize, redMoonSize)
 	moonCore.Position = moonCenter
 	moonCore.Anchored = true
 	moonCore.CanCollide = false
@@ -1439,9 +1439,9 @@ local function createBloodMoon(parent: Folder, spawnPos: Vector3)
 	moonCore.Parent = parent
 
 	local moonAura = Instance.new("Part")
-	moonAura.Name = "BloodMoonAura"
+	moonAura.Name = "RedMoonAura"
 	moonAura.Shape = Enum.PartType.Ball
-	moonAura.Size = Vector3.new(bloodMoonSize * 1.42, bloodMoonSize * 1.42, bloodMoonSize * 1.42)
+	moonAura.Size = Vector3.new(redMoonSize * 1.42, redMoonSize * 1.42, redMoonSize * 1.42)
 	moonAura.Position = moonCenter
 	moonAura.Anchored = true
 	moonAura.CanCollide = false
@@ -1452,9 +1452,9 @@ local function createBloodMoon(parent: Folder, spawnPos: Vector3)
 	moonAura.Parent = parent
 
 	local moonHalo = Instance.new("Part")
-	moonHalo.Name = "BloodMoonHalo"
+	moonHalo.Name = "RedMoonHalo"
 	moonHalo.Shape = Enum.PartType.Cylinder
-	moonHalo.Size = Vector3.new(1.5, bloodMoonSize * 1.86, bloodMoonSize * 1.86)
+	moonHalo.Size = Vector3.new(1.5, redMoonSize * 1.86, redMoonSize * 1.86)
 	moonHalo.Anchored = true
 	moonHalo.CanCollide = false
 	moonHalo.CastShadow = false
@@ -1465,7 +1465,7 @@ local function createBloodMoon(parent: Folder, spawnPos: Vector3)
 	moonHalo.Parent = parent
 
 	local moonLight = Instance.new("PointLight")
-	moonLight.Name = "BloodMoonLight"
+	moonLight.Name = "RedMoonLight"
 	moonLight.Brightness = 2.4
 	moonLight.Range = 340
 	moonLight.Color = Color3.fromRGB(255, 74, 60)
@@ -1554,10 +1554,10 @@ function WorldService.Start()
 	end
 
 	local moonOk, moonError = pcall(function()
-		createBloodMoon(decor, spawn.Position)
+		createRedMoon(decor, spawn.Position)
 	end)
 	if not moonOk then
-		warn(("[WorldService] Blood moon setup failed: %s"):format(tostring(moonError)))
+		warn(("[WorldService] Red moon setup failed: %s"):format(tostring(moonError)))
 	end
 end
 

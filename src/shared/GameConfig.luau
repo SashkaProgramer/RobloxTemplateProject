@@ -2,7 +2,7 @@
 
 local GameConfig = {
 	Player = {
-		DisplayName = "Саня",
+		DisplayName = "Survivor",
 		MaxStamina = 1000,
 		StaminaDrainPerSecond = 20,
 		StaminaRegenPerSecond = 12,
@@ -58,7 +58,7 @@ local GameConfig = {
 		MaxHealth = 100,
 		RespawnSeconds = 60,
 		TurnLerpSpeed = 7,
-		GroanSoundId = "rbxasset://sounds/uuhhh.mp3",
+		GroanSoundId = "",
 		GroanVariants = {
 			{
 				Name = "PigSqueal",
@@ -147,7 +147,7 @@ local GameConfig = {
 				EqHighGain = 6,
 			},
 		},
-		GroanVolume = 0.8,
+		GroanVolume = 0,
 		GroanPlaybackSpeedMin = 0.48,
 		GroanPlaybackSpeedMax = 0.78,
 		GroanIntervalMin = 3.5,
@@ -162,7 +162,7 @@ local GameConfig = {
 		DeathCubeLifetime = 5,
 		Boss = {
 			Enabled = true,
-			Name = "Bayum",
+			Name = "Titan",
 			MaxHealth = 1800,
 			Damage = 28,
 			DamageCooldown = 1.5,

@@ -1,6 +1,7 @@
 --!strict
 
 local Players = game:GetService("Players")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -260,11 +261,63 @@ crosshairRight.Parent = crosshair
 
 local sprinting = false
 local lastToastId = 0
-local launcherName = "Grenade Launcher"
-local swordName = "Jedi Lightsaber"
+local launcherName = "Pulse Launcher"
+local swordName = "Energy Blade"
 local lastAimSent = 0
-local shoulderCameraOffset = Vector3.new(1.45, 0.65, 0)
-local crosshairPixelOffset = Vector2.new(0, -128)
+local keyboardShoulderCameraOffset = Vector3.new(1.45, 0.65, 0)
+local gamepadShoulderCameraOffset = Vector3.new(0.95, 0.35, 0)
+local keyboardCrosshairPixelOffset = Vector2.new(0, -128)
+local gamepadCrosshairPixelOffset = Vector2.new(0, -44)
+local attackActionName = "ConsolePrimaryAction"
+local equipLauncherActionName = "ConsoleEquipLauncher"
+local equipBladeActionName = "ConsoleEquipBlade"
+
+local function isGamepadInputType(inputType: Enum.UserInputType): boolean
+	return inputType == Enum.UserInputType.Gamepad1
+		or inputType == Enum.UserInputType.Gamepad2
+		or inputType == Enum.UserInputType.Gamepad3
+		or inputType == Enum.UserInputType.Gamepad4
+		or inputType == Enum.UserInputType.Gamepad5
+		or inputType == Enum.UserInputType.Gamepad6
+		or inputType == Enum.UserInputType.Gamepad7
+		or inputType == Enum.UserInputType.Gamepad8
+end
+
+local function isUsingGamepadAim(): boolean
+	local preferredInput = UserInputService.PreferredInput
+	if preferredInput == Enum.PreferredInput.Gamepad then
+		return true
+	end
+
+	return isGamepadInputType(UserInputService:GetLastInputType())
+end
+
+local function getShoulderCameraOffset(): Vector3
+	if isUsingGamepadAim() then
+		return gamepadShoulderCameraOffset
+	end
+
+	return keyboardShoulderCameraOffset
+end
+
+local function getCrosshairPixelOffset(): Vector2
+	if isUsingGamepadAim() then
+		return gamepadCrosshairPixelOffset
+	end
+
+	return keyboardCrosshairPixelOffset
+end
+
+local function updateCrosshairLayout()
+	local crosshairPixelOffset = getCrosshairPixelOffset()
+	crosshair.Position = UDim2.new(0.5, crosshairPixelOffset.X, 0.5, crosshairPixelOffset.Y)
+
+	if isUsingGamepadAim() then
+		crosshair.Size = UDim2.fromOffset(42, 42)
+	else
+		crosshair.Size = UDim2.fromOffset(34, 34)
+	end
+end
 
 local function setBarRatio(fillBar: Frame, ratio: number)
 	local clamped = math.clamp(ratio, 0, 1)
@@ -418,6 +471,7 @@ local function computeAimPoint(): Vector3?
 		return nil
 	end
 
+	local crosshairPixelOffset = getCrosshairPixelOffset()
 	local viewport = camera.ViewportSize
 	local ray = camera:ViewportPointToRay(
 		viewport.X * 0.5 + crosshairPixelOffset.X,
@@ -442,11 +496,11 @@ end
 local function pushAimUpdate(force: boolean)
 	local equippedLauncher = getEquippedLauncher()
 	crosshair.Visible = equippedLauncher ~= nil
-	crosshair.Position = UDim2.new(0.5, crosshairPixelOffset.X, 0.5, crosshairPixelOffset.Y)
+	updateCrosshairLayout()
 
 	local humanoid = getHumanoid()
 	if humanoid then
-		humanoid.CameraOffset = if equippedLauncher then shoulderCameraOffset else Vector3.zero
+		humanoid.CameraOffset = if equippedLauncher then getShoulderCameraOffset() else Vector3.zero
 	end
 
 	if not equippedLauncher then
@@ -467,10 +521,59 @@ local function pushAimUpdate(force: boolean)
 	aimUpdateEvent:FireServer(aimPoint)
 end
 
+local function triggerPrimaryAction()
+	pushAimUpdate(true)
+	if getEquippedWeapon() then
+		playerAttackEvent:FireServer()
+	end
+end
+
+ContextActionService:BindAction(attackActionName, function(_, inputState: Enum.UserInputState, _inputObject: InputObject)
+	if inputState ~= Enum.UserInputState.Begin then
+		return Enum.ContextActionResult.Pass
+	end
+
+	triggerPrimaryAction()
+	return Enum.ContextActionResult.Sink
+end, false, Enum.KeyCode.ButtonR2)
+
+ContextActionService:BindAction(
+	equipLauncherActionName,
+	function(_, inputState: Enum.UserInputState, _inputObject: InputObject)
+		if inputState ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+
+		equipWeaponByName(launcherName)
+		return Enum.ContextActionResult.Sink
+	end,
+	false,
+	Enum.KeyCode.DPadLeft
+)
+
+ContextActionService:BindAction(
+	equipBladeActionName,
+	function(_, inputState: Enum.UserInputState, _inputObject: InputObject)
+		if inputState ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+
+		equipWeaponByName(swordName)
+		return Enum.ContextActionResult.Sink
+	end,
+	false,
+	Enum.KeyCode.DPadRight
+)
+
+UserInputService.LastInputTypeChanged:Connect(function()
+	updateCrosshairLayout()
+end)
+
 RunService.RenderStepped:Connect(function()
 	pushAimUpdate(false)
 end)
 
+updateCrosshairLayout()
 updateStaminaHud(GameConfig.Player.MaxStamina)
 
 stateUpdateEvent.OnClientEvent:Connect(function(data)
@@ -503,18 +606,15 @@ end)
 
 attackFeedbackEvent.OnClientEvent:Connect(function(data)
 	if data.hit == true then
-		setToast("Hit infected")
+		setToast("Target reached")
 	else
-		setToast("Miss")
+		setToast("No target")
 	end
 end)
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		pushAimUpdate(true)
-		if getEquippedWeapon() then
-			playerAttackEvent:FireServer()
-		end
+		triggerPrimaryAction()
 	end
 
 	if gameProcessedEvent then
