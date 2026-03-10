@@ -33,11 +33,28 @@ Source-to-Datamodel mapping is declared in `default.project.json`:
 
 - `src/server/init.server.luau`
   - Server entrypoint script.
+- `src/server/InfectedService.luau`
+  - Server-side infected spawning or behaviour service.
+- `src/server/LootService.luau`
+  - Server-side loot distribution service.
+- `src/server/PlayerStateService.luau`
+  - Server-side player state management service.
+- `src/server/WeaponService.luau`
+  - Server-side weapon logic and validation service.
+- `src/server/WorldService.luau`
+  - Server-side world state and encounter management service.
+
+### 3.3 Shared
+
+- `src/shared/GameConfig.luau`
+  - Shared gameplay configuration and constants.
+- `src/shared/Net.luau`
+  - Shared networking contracts or remote access helpers.
 
 ## 4. Dependencies and toolchain
 
 - Package manager: Wally (`wally.toml`).
-- Formatting: StyLua.
+- Formatting: StyLua (`rokit.toml`).
 - Linting: Selene.
 - Tool version pinning: Rokit.
 
