@@ -1,13 +1,17 @@
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local InteractionDefs = require(Shared:WaitForChild("InteractionDefs"))
 local Net = require(Shared:WaitForChild("Net"))
 
+local ObjectiveService = require(script.Parent:WaitForChild("ObjectiveService"))
 local RoundService = require(script.Parent:WaitForChild("RoundService"))
+local PlayerStateService = require(script.Parent:WaitForChild("PlayerStateService"))
 
 type ZoneState = {
 	zoneId: string,
@@ -25,14 +29,24 @@ type DoorState = {
 	isLocked: boolean,
 }
 
+type GateState = {
+	gateId: string,
+	blocker: BasePart,
+	isOpen: boolean,
+}
+
 local WorldService = {}
 
 local requestInteractEvent: RemoteEvent
 local requestSabotageEvent: RemoteEvent
 local sabotageFeedbackEvent: RemoteEvent
+local zoneTrackingConnection: RBXScriptConnection?
 
 local zonesById: { [string]: ZoneState } = {}
 local doorsById: { [string]: DoorState } = {}
+local extractionGateState: GateState? = nil
+local openDoor: (doorState: DoorState) -> ()
+local closeDoor: (doorState: DoorState) -> ()
 
 local function getCharacterRoot(player: Player): BasePart?
 	local character = player.Character
@@ -51,6 +65,7 @@ end
 local function clearRegistries()
 	table.clear(zonesById)
 	table.clear(doorsById)
+	extractionGateState = nil
 end
 
 local function getHospitalWorldFolder(): Folder?
@@ -107,6 +122,16 @@ local function setZonePower(zoneState: ZoneState, powerOn: boolean)
 	end
 end
 
+local function setExtractionGateVisual(gateState: GateState)
+	gateState.blocker.CanCollide = not gateState.isOpen
+	gateState.blocker.CanQuery = not gateState.isOpen
+	gateState.blocker.Transparency = gateState.isOpen and 0.82 or 0.06
+	gateState.blocker.Color = if gateState.isOpen
+		then Color3.fromRGB(110, 180, 144)
+		else Color3.fromRGB(188, 92, 80)
+	gateState.blocker:SetAttribute("IsGateOpen", gateState.isOpen)
+end
+
 local function registerZonesAndDoors()
 	clearRegistries()
 
@@ -141,6 +166,15 @@ local function registerZonesAndDoors()
 			doorsById[doorId] = doorState
 			setDoorVisual(doorState)
 		end
+
+		if child:IsA("BasePart") and child:GetAttribute("GateId") ~= nil then
+			extractionGateState = {
+				gateId = tostring(child:GetAttribute("GateId")),
+				blocker = child,
+				isOpen = child:GetAttribute("IsGateOpen") == true,
+			}
+			setExtractionGateVisual(extractionGateState)
+		end
 	end
 
 	for _, zoneState in zonesById do
@@ -148,8 +182,31 @@ local function registerZonesAndDoors()
 	end
 end
 
+local function resetWorldState()
+	for _, doorState in doorsById do
+		doorState.isLocked = false
+		doorState.blocker:SetAttribute("IsDoorLocked", false)
+		closeDoor(doorState)
+	end
+
+	for _, zoneState in zonesById do
+		setZonePower(zoneState, true)
+	end
+
+	WorldService.SetExtractionGateOpen(false)
+end
+
 local function isPhaseAllowed(interactionId: string): boolean
 	return InteractionDefs.isAllowedInPhase(interactionId, RoundService.GetCurrentPhase())
+end
+
+local function canPlayerUseWorldInteractions(player: Player): boolean
+	local roundState = PlayerStateService.GetRoundState(player)
+	if not roundState then
+		return false
+	end
+
+	return roundState.alive and not roundState.extracted
 end
 
 local function isPlayerNearPart(player: Player, part: BasePart, maxDistance: number): boolean
@@ -161,13 +218,50 @@ local function isPlayerNearPart(player: Player, part: BasePart, maxDistance: num
 	return (root.Position - part.Position).Magnitude <= maxDistance
 end
 
-local function openDoor(doorState: DoorState)
+local function getNearestZoneIdForPlayer(player: Player): string?
+	local root = getCharacterRoot(player)
+	if not root then
+		return nil
+	end
+
+	local nearestZoneId: string? = nil
+	local nearestDistance = math.huge
+
+	for zoneId, zoneState in zonesById do
+		local primaryPart = zoneState.model.PrimaryPart
+		if primaryPart then
+			local distance = (root.Position - primaryPart.Position).Magnitude
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearestZoneId = zoneId
+			end
+		end
+	end
+
+	return nearestZoneId
+end
+
+local function startZoneTracking()
+	if zoneTrackingConnection then
+		zoneTrackingConnection:Disconnect()
+		zoneTrackingConnection = nil
+	end
+
+	zoneTrackingConnection = RunService.Heartbeat:Connect(function()
+		for _, player in Players:GetPlayers() do
+			local nearestZoneId = getNearestZoneIdForPlayer(player)
+			PlayerStateService.SetCurrentZoneId(player, nearestZoneId)
+		end
+	end)
+end
+
+openDoor = function(doorState: DoorState)
 	doorState.isOpen = true
 	doorState.blocker:SetAttribute("IsDoorOpen", true)
 	setDoorVisual(doorState)
 end
 
-local function closeDoor(doorState: DoorState)
+closeDoor = function(doorState: DoorState)
 	doorState.isOpen = false
 	doorState.blocker:SetAttribute("IsDoorOpen", false)
 	setDoorVisual(doorState)
@@ -184,6 +278,10 @@ end
 
 local function onRequestInteract(player: Player, payload: any)
 	if typeof(payload) ~= "table" then
+		return
+	end
+
+	if not canPlayerUseWorldInteractions(player) then
 		return
 	end
 
@@ -223,10 +321,26 @@ local function onRequestInteract(player: Player, payload: any)
 
 		return
 	end
+
+	if interactionId == "recover_power" then
+		local completed = ObjectiveService.TryCompleteZoneObjective(player, objectId)
+		if completed and ObjectiveService.AreAllObjectivesComplete() then
+			WorldService.SetExtractionGateOpen(true)
+			sabotageFeedbackEvent:FireClient(player, {
+				ok = true,
+				message = "Roof gate unlocked",
+			})
+		end
+		return
+	end
 end
 
 local function onRequestSabotage(player: Player, payload: any)
 	if typeof(payload) ~= "table" then
+		return
+	end
+
+	if not canPlayerUseWorldInteractions(player) then
 		return
 	end
 
@@ -311,6 +425,35 @@ local function bindDoorPrompt(doorState: DoorState)
 	end)
 end
 
+local function bindZonePrompts(zoneState: ZoneState)
+	for _, descendant in zoneState.model:GetDescendants() do
+		if not descendant:IsA("ProximityPrompt") then
+			continue
+		end
+
+		local promptParent = descendant.Parent
+		if not promptParent or not promptParent:IsA("BasePart") then
+			continue
+		end
+
+		if promptParent:GetAttribute("InteractionId") ~= "recover_power" then
+			continue
+		end
+
+		local objectiveZoneId = promptParent:GetAttribute("ObjectiveZoneId")
+		if typeof(objectiveZoneId) ~= "string" then
+			continue
+		end
+
+		descendant.Triggered:Connect(function(player: Player)
+			onRequestInteract(player, {
+				interactionId = "recover_power",
+				objectId = objectiveZoneId,
+			})
+		end)
+	end
+end
+
 function WorldService.Start(netFolder: Folder)
 	requestInteractEvent = netFolder:WaitForChild(Net.Events.RequestInteract) :: RemoteEvent
 	requestSabotageEvent = netFolder:WaitForChild(Net.Events.RequestSabotage) :: RemoteEvent
@@ -320,9 +463,21 @@ function WorldService.Start(netFolder: Folder)
 
 	requestInteractEvent.OnServerEvent:Connect(onRequestInteract)
 	requestSabotageEvent.OnServerEvent:Connect(onRequestSabotage)
+	startZoneTracking()
+	resetWorldState()
+
+	RoundService.OnPhaseChanged(function(newPhase: string)
+		if newPhase == "Preparation" then
+			resetWorldState()
+		end
+	end)
 
 	for _, doorState in doorsById do
 		bindDoorPrompt(doorState)
+	end
+
+	for _, zoneState in zonesById do
+		bindZonePrompts(zoneState)
 	end
 end
 
@@ -340,6 +495,21 @@ end
 
 function WorldService.GetAllDoors(): { [string]: DoorState }
 	return doorsById
+end
+
+function WorldService.SetExtractionGateOpen(isOpen: boolean)
+	local gateState = extractionGateState
+	if not gateState then
+		return
+	end
+
+	gateState.isOpen = isOpen
+	setExtractionGateVisual(gateState)
+end
+
+function WorldService.IsExtractionGateOpen(): boolean
+	local gateState = extractionGateState
+	return gateState ~= nil and gateState.isOpen
 end
 
 return WorldService
