@@ -24,6 +24,7 @@ local roundStateChangedEvent = netFolder:WaitForChild(Net.Events.RoundStateChang
 local roundTimerUpdatedEvent = netFolder:WaitForChild(Net.Events.RoundTimerUpdated) :: RemoteEvent
 local playerRoundStateChangedEvent = netFolder:WaitForChild(Net.Events.PlayerRoundStateChanged) :: RemoteEvent
 local inventoryUpdatedEvent = netFolder:WaitForChild(Net.Events.InventoryUpdated) :: RemoteEvent
+local objectivesUpdatedEvent = netFolder:WaitForChild(Net.Events.ObjectivesUpdated) :: RemoteEvent
 local requestInteractEvent = netFolder:WaitForChild(Net.Events.RequestInteract) :: RemoteEvent
 local requestDropLootEvent = netFolder:WaitForChild(Net.Events.RequestDropLoot) :: RemoteEvent
 local requestUseItemEvent = netFolder:WaitForChild(Net.Events.RequestUseItem) :: RemoteEvent
@@ -44,8 +45,8 @@ local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.BackgroundColor3 = Color3.fromRGB(18, 20, 22)
 panel.BackgroundTransparency = 0.2
-panel.Size = UDim2.fromOffset(280, 218)
-panel.Position = UDim2.new(0, 20, 1, -238)
+panel.Size = UDim2.fromOffset(280, 266)
+panel.Position = UDim2.new(0, 20, 1, -286)
 panel.Parent = screenGui
 
 local panelCorner = Instance.new("UICorner")
@@ -103,6 +104,16 @@ local inventoryLabel = staminaLabel:Clone()
 inventoryLabel.Position = UDim2.fromOffset(10, 184)
 inventoryLabel.Text = "Inventory: empty"
 inventoryLabel.Parent = panel
+
+local zoneLabel = staminaLabel:Clone()
+zoneLabel.Position = UDim2.fromOffset(10, 208)
+zoneLabel.Text = "Zone: --"
+zoneLabel.Parent = panel
+
+local objectiveLabel = staminaLabel:Clone()
+objectiveLabel.Position = UDim2.fromOffset(10, 232)
+objectiveLabel.Text = "Objectives: 0/0"
+objectiveLabel.Parent = panel
 
 local toast = Instance.new("TextLabel")
 toast.BackgroundColor3 = Color3.fromRGB(38, 52, 38)
@@ -312,6 +323,9 @@ local currentExtractionSlotsRemaining = 0
 local currentHasRareLoot = false
 local legacyCombatEnabled = FeatureFlags.EnableLegacyCombat == true
 local localPlayerExtracted = false
+local currentZoneId = "--"
+local currentObjectivesCompleted = 0
+local currentObjectivesRequired = 0
 
 local function refreshRoundHud()
 	phaseLabel.Text = ("Phase: %s"):format(currentRoundPhase)
@@ -332,6 +346,9 @@ local function refreshRoundHud()
 		end
 		inventoryLabel.Text = ("Inventory: %s"):format(summary)
 	end
+
+	zoneLabel.Text = ("Zone: %s"):format(currentZoneId)
+	objectiveLabel.Text = ("Objectives: %d/%d"):format(currentObjectivesCompleted, currentObjectivesRequired)
 end
 
 local function getCharacterRoot(): BasePart?
@@ -483,6 +500,50 @@ local function setToast(text: string)
 			toast.Visible = false
 		end
 	end)
+end
+
+local function formatExtractionFailureReason(reason: string): string
+	if reason == "ObjectivesIncomplete" then
+		return "Restore power before extraction"
+	end
+
+	if reason == "GateClosed" then
+		return "Roof gate is still closed"
+	end
+
+	if reason == "ExtractionClosed" then
+		return "Extraction is not open"
+	end
+
+	if reason == "NoSlotsRemaining" then
+		return "No extraction slots left"
+	end
+
+	if reason == "AlreadyExtracted" then
+		return "You are already locked in"
+	end
+
+	return ("Extraction failed: %s"):format(reason)
+end
+
+local function formatRoundResolutionToast(didExtract: boolean, reason: string?): string
+	if didExtract then
+		if reason == "ExtractionFull" then
+			return "Round resolved: you secured a slot"
+		end
+
+		return "Round resolved: extracted"
+	end
+
+	if reason == "NoActivePlayersRemaining" then
+		return "Round resolved: no survivors remained"
+	end
+
+	if reason == "ExtractionFull" then
+		return "Round resolved: evacuation filled before you escaped"
+	end
+
+	return "Round resolved: lost carried loot"
 end
 
 local function updateHpLabel()
@@ -776,6 +837,7 @@ playerRoundStateChangedEvent.OnClientEvent:Connect(function(data)
 	currentCarriedValue = math.max(0, tonumber(data.carriedValue) or 0)
 	currentHasRareLoot = data.hasRareLoot == true
 	localPlayerExtracted = data.extracted == true
+	currentZoneId = tostring(data.currentZoneId or "--")
 	refreshRoundHud()
 end)
 
@@ -791,6 +853,12 @@ inventoryUpdatedEvent.OnClientEvent:Connect(function(data)
 	end
 	currentCarriedValue = math.max(0, tonumber(data.carriedValue) or currentCarriedValue)
 	currentHasRareLoot = data.hasRareLoot == true
+	refreshRoundHud()
+end)
+
+objectivesUpdatedEvent.OnClientEvent:Connect(function(data)
+	currentObjectivesCompleted = math.max(0, tonumber(data.completed) or 0)
+	currentObjectivesRequired = math.max(0, tonumber(data.required) or 0)
 	refreshRoundHud()
 end)
 
@@ -818,7 +886,7 @@ requestExtractEvent.OnClientEvent:Connect(function(data)
 		setToast("Extraction locked in")
 	else
 		local reason = tostring(data.reason or "ExtractionFailed")
-		setToast(("Extraction failed: %s"):format(reason))
+		setToast(formatExtractionFailureReason(reason))
 	end
 end)
 
@@ -833,11 +901,12 @@ matchResultEvent.OnClientEvent:Connect(function(data)
 			end
 		end
 
-		if didExtract or localPlayerExtracted then
-			setToast("Round resolved: extracted")
-		else
-			setToast("Round resolved: lost carried loot")
+		local reason = data.reason
+		if typeof(reason) ~= "string" then
+			reason = nil
 		end
+
+		setToast(formatRoundResolutionToast(didExtract or localPlayerExtracted, reason))
 	end
 end)
 
@@ -926,6 +995,16 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEv
 			requestSabotageEvent:FireServer({
 				interactionId = "cut_power",
 				objectId = zoneId,
+			})
+		end
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.V then
+		if currentZoneId ~= "--" then
+			requestInteractEvent:FireServer({
+				interactionId = "recover_power",
+				objectId = currentZoneId,
 			})
 		end
 	end
