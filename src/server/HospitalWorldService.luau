@@ -7,12 +7,35 @@ local HospitalWorldService = {}
 
 local worldFolderName = "HospitalRaidWorld"
 local extractionPadName = "ExtractionPad"
+local extractionGateName = "ExtractionGate"
 local spawnName = "StartSpawn"
 local sectionCount = 5
 local sectionLength = 34
 local sectionWidth = 28
 local sectionHeight = 12
 local corridorGap = 8
+local sectionThemes = {
+	{
+		displayName = "Triage",
+		accentColor = Color3.fromRGB(132, 162, 177),
+	},
+	{
+		displayName = "Surgery",
+		accentColor = Color3.fromRGB(116, 156, 194),
+	},
+	{
+		displayName = "Isolation",
+		accentColor = Color3.fromRGB(166, 138, 88),
+	},
+	{
+		displayName = "Pharmacy",
+		accentColor = Color3.fromRGB(104, 154, 126),
+	},
+	{
+		displayName = "Roof Access",
+		accentColor = Color3.fromRGB(176, 112, 96),
+	},
+}
 
 local function ensureWorldFolder(): Folder
 	local existing = Workspace:FindFirstChild(worldFolderName)
@@ -68,10 +91,113 @@ local function createPart(parent: Instance, name: string, size: Vector3, cframe:
 	return part
 end
 
+local function createSignLabel(parent: Instance, adornee: BasePart, text: string)
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ZoneSign"
+	billboard.Adornee = adornee
+	billboard.Size = UDim2.fromOffset(220, 40)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, 3.1, 0)
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 180
+	billboard.Parent = parent
+
+	local bg = Instance.new("Frame")
+	bg.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
+	bg.BackgroundTransparency = 0.16
+	bg.BorderSizePixel = 0
+	bg.Size = UDim2.fromScale(1, 1)
+	bg.Parent = billboard
+
+	local bgCorner = Instance.new("UICorner")
+	bgCorner.CornerRadius = UDim.new(0, 8)
+	bgCorner.Parent = bg
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 20
+	label.TextColor3 = Color3.fromRGB(234, 239, 244)
+	label.TextStrokeTransparency = 0.45
+	label.Text = text
+	label.Parent = bg
+end
+
+local function createSectionSetPiece(sectionModel: Model, index: number, origin: Vector3)
+	if index == 1 then
+		createPart(
+			sectionModel,
+			"ReceptionDesk",
+			Vector3.new(10, 3.2, 2.6),
+			CFrame.new(origin + Vector3.new(0, 3.1, -7)),
+			Color3.fromRGB(101, 112, 123),
+			Enum.Material.Metal,
+			true
+		)
+	elseif index == 2 then
+		createPart(
+			sectionModel,
+			"SurgeryTable",
+			Vector3.new(4, 1.4, 8),
+			CFrame.new(origin + Vector3.new(0, 2.2, 2)),
+			Color3.fromRGB(148, 158, 166),
+			Enum.Material.Metal,
+			true
+		)
+		createPart(
+			sectionModel,
+			"OperationLightArm",
+			Vector3.new(0.6, 5, 0.6),
+			CFrame.new(origin + Vector3.new(-3.5, 7.5, 2)),
+			Color3.fromRGB(166, 176, 184),
+			Enum.Material.Metal,
+			true
+		)
+	elseif index == 3 then
+		for side = -1, 1, 2 do
+			createPart(
+				sectionModel,
+				("IsolationBarrier_%d"):format(side),
+				Vector3.new(5, 4.6, 0.4),
+				CFrame.new(origin + Vector3.new(side * 5.2, 4, -4)),
+				Color3.fromRGB(178, 164, 104),
+				Enum.Material.Plastic,
+				true
+			)
+		end
+	elseif index == 4 then
+		for shelfIndex = 1, 2 do
+			createPart(
+				sectionModel,
+				("MedicineShelf_%d"):format(shelfIndex),
+				Vector3.new(2.2, 5.4, 8),
+				CFrame.new(origin + Vector3.new(if shelfIndex == 1 then -7 else 7, 3.8, 2)),
+				Color3.fromRGB(94, 128, 112),
+				Enum.Material.Metal,
+				true
+			)
+		end
+	elseif index == 5 then
+		createPart(
+			sectionModel,
+			"RoofTerminal",
+			Vector3.new(3.2, 3.2, 1.2),
+			CFrame.new(origin + Vector3.new(0, 4.2, -8)),
+			Color3.fromRGB(140, 112, 92),
+			Enum.Material.Metal,
+			true
+		)
+	end
+end
+
 local function createHospitalSection(parent: Folder, index: number, origin: Vector3)
 	local sectionModel = Instance.new("Model")
 	sectionModel.Name = ("Zone_%02d"):format(index)
 	sectionModel:SetAttribute("ZoneId", sectionModel.Name)
+	local theme = sectionThemes[index]
+	if theme then
+		sectionModel:SetAttribute("ZoneDisplayName", theme.displayName)
+	end
 	sectionModel.Parent = parent
 
 	local floor = createPart(
@@ -84,6 +210,30 @@ local function createHospitalSection(parent: Folder, index: number, origin: Vect
 		true
 	)
 	sectionModel.PrimaryPart = floor
+
+	if theme then
+		local accentStrip = createPart(
+			sectionModel,
+			"AccentStrip",
+			Vector3.new(sectionWidth - 6, 0.18, 2.6),
+			CFrame.new(origin + Vector3.new(0, 2.6, -sectionLength * 0.5 + 2.2)),
+			theme.accentColor,
+			Enum.Material.Neon,
+			false
+		)
+		accentStrip.Transparency = 0.2
+
+		local signPanel = createPart(
+			sectionModel,
+			"SectionSignPanel",
+			Vector3.new(7.5, 2.2, 0.4),
+			CFrame.new(origin + Vector3.new(0, sectionHeight - 2.2, -sectionLength * 0.5 + 0.8)),
+			Color3.fromRGB(34, 40, 48),
+			Enum.Material.Metal,
+			true
+		)
+		createSignLabel(sectionModel, signPanel, theme.displayName)
+	end
 
 	createPart(
 		sectionModel,
@@ -190,6 +340,33 @@ local function createHospitalSection(parent: Folder, index: number, origin: Vect
 	light.Range = 22
 	light.Color = Color3.fromRGB(214, 235, 255)
 	light.Parent = lamp
+
+	if index >= 2 and index <= 4 then
+		local fusePanel = createPart(
+			sectionModel,
+			"FusePanel",
+			Vector3.new(2.4, 2.8, 0.6),
+			CFrame.new(origin + Vector3.new(0, 4, -sectionLength * 0.28)),
+			Color3.fromRGB(124, 142, 158),
+			Enum.Material.Metal,
+			true
+		)
+		fusePanel:SetAttribute("InteractionId", "recover_power")
+		fusePanel:SetAttribute("ObjectiveZoneId", sectionModel.Name)
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "RecoverPowerPrompt"
+		prompt.ActionText = "Restore Power"
+		prompt.ObjectText = "Fuse Panel"
+		prompt.KeyboardKeyCode = Enum.KeyCode.E
+		prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
+		prompt.HoldDuration = 0.9
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = fusePanel
+	end
+
+	createSectionSetPiece(sectionModel, index, origin)
 end
 
 local function createCorridor(parent: Folder, index: number, origin: Vector3)
@@ -262,6 +439,19 @@ local function createSpawn(parent: Folder, origin: Vector3)
 end
 
 local function createExtraction(parent: Folder, origin: Vector3)
+	local gate = createPart(
+		parent,
+		extractionGateName,
+		Vector3.new(10, 9, 2),
+		CFrame.new(origin + Vector3.new(0, 6, -9)),
+		Color3.fromRGB(188, 92, 80),
+		Enum.Material.ForceField,
+		true
+	)
+	gate.Transparency = 0.06
+	gate:SetAttribute("GateId", extractionGateName)
+	gate:SetAttribute("IsGateOpen", false)
+
 	local pad = createPart(
 		parent,
 		extractionPadName,
