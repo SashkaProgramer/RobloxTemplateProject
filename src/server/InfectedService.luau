@@ -242,6 +242,12 @@ end
 local function syncVisuals(agent: InfectedAgent)
 	local walkPhase = agent.walkCycle
 	local moveBlend = math.clamp(agent.moveBlend, 0, 1)
+	local attackBlend = if agent.attackWindup > 0
+		then math.clamp(agent.attackWindup / math.max(0.001, agent.attackWindupSeconds), 0, 1)
+		else 0
+	local magicBlend = if agent.magicWindup > 0
+		then math.clamp(agent.magicWindup / math.max(0.001, agent.magicWindupSeconds), 0, 1)
+		else 0
 	for _, entry in agent.visuals do
 		local offset = entry.offset
 
@@ -249,8 +255,17 @@ local function syncVisuals(agent: InfectedAgent)
 			local stride = math.sin(walkPhase)
 			local counterStride = math.sin(walkPhase + math.pi)
 			local strideDouble = math.sin(walkPhase * 2)
+			local attackPose = math.max(attackBlend, magicBlend * 0.7)
 
-			if entry.part.Name == "TitanLeftLeg" then
+			if entry.part.Name == "BossAvatarMesh" or entry.part.Name == "TitanFallbackCore" then
+				local bob = math.abs(stride) * 0.24 * moveBlend
+				local sway = math.rad(2.8 * stride * moveBlend)
+				local lean = math.rad(-8 * attackPose)
+				local rise = attackBlend * 0.35 + magicBlend * 0.18
+				offset = offset
+					* CFrame.new(0, bob + rise, -attackBlend * 0.28)
+					* CFrame.Angles(lean, 0, sway)
+			elseif entry.part.Name == "TitanLeftLeg" then
 				local lift = math.max(0, counterStride) * 0.42 * moveBlend
 				offset = offset
 					* CFrame.new(0, lift, 0)
@@ -738,6 +753,29 @@ local function addVisual(visuals: { { part: BasePart, offset: CFrame } }, part: 
 	})
 end
 
+local function cloneBossMesh(model: Model): BasePart?
+	local bossConfig = GameConfig.Infected.Boss
+	local meshName = bossConfig.MeshName
+	if typeof(meshName) ~= "string" or meshName == "" then
+		return nil
+	end
+
+	local template = ReplicatedStorage:FindFirstChild(meshName)
+	if not template or not template:IsA("BasePart") then
+		return nil
+	end
+
+	local mesh = template:Clone()
+	mesh.Name = "BossAvatarMesh"
+	mesh.Anchored = true
+	mesh.CanCollide = false
+	mesh.CanQuery = false
+	mesh.CanTouch = false
+	mesh.Massless = true
+	mesh.Parent = model
+	return mesh
+end
+
 local function spawnInfected(unitId: number, parent: Folder, archetype: InfectedArchetype?): InfectedAgent
 	local infectedArchetype: InfectedArchetype = if archetype then archetype else "normal"
 	local isBoss = infectedArchetype == "baium"
@@ -774,159 +812,7 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 	local rightEye: BasePart
 
 	if isBoss then
-		local skinColor = Color3.fromRGB(152, 150, 136)
-		local armorDark = Color3.fromRGB(61, 53, 46)
-		local armorGold = Color3.fromRGB(154, 120, 62)
-		local armorTrim = Color3.fromRGB(203, 171, 93)
-		local capeColor = Color3.fromRGB(61, 18, 18)
-		local boneColor = Color3.fromRGB(178, 173, 154)
-
-		local torso = createBodyPart(
-			model,
-			"TitanTorso",
-			Vector3.new(6.8, 7.6, 3.8),
-			armorDark,
-			Enum.Material.Metal
-		)
-		local chestPlate = createBodyPart(
-			model,
-			"TitanChestPlate",
-			Vector3.new(5.3, 3.8, 1.05),
-			armorGold,
-			Enum.Material.Metal
-		)
-		local abdomenPlate = createBodyPart(
-			model,
-			"TitanAbdomenPlate",
-			Vector3.new(4.3, 2, 0.82),
-			armorTrim,
-			Enum.Material.Metal
-		)
-		local head = createBodyPart(
-			model,
-			"TitanHead",
-			Vector3.new(3.4, 3.2, 3),
-			skinColor,
-			Enum.Material.SmoothPlastic
-		)
-		local jaw = createBodyPart(
-			model,
-			"TitanJaw",
-			Vector3.new(2.7, 1.1, 1.7),
-			boneColor,
-			Enum.Material.SmoothPlastic
-		)
-		local leftArm = createBodyPart(
-			model,
-			"TitanLeftArm",
-			Vector3.new(1.9, 6.1, 1.9),
-			armorDark,
-			Enum.Material.Metal
-		)
-		local leftForearm = createBodyPart(
-			model,
-			"TitanLeftForearm",
-			Vector3.new(2.15, 4.7, 2.15),
-			armorGold,
-			Enum.Material.Metal
-		)
-		local rightArm = createBodyPart(
-			model,
-			"TitanRightArm",
-			Vector3.new(1.9, 6.1, 1.9),
-			armorDark,
-			Enum.Material.Metal
-		)
-		local rightForearm = createBodyPart(
-			model,
-			"TitanRightForearm",
-			Vector3.new(2.15, 4.7, 2.15),
-			armorGold,
-			Enum.Material.Metal
-		)
-		local leftLeg = createBodyPart(
-			model,
-			"TitanLeftLeg",
-			Vector3.new(2.4, 7.3, 2.4),
-			armorDark,
-			Enum.Material.Metal
-		)
-		local rightLeg = createBodyPart(
-			model,
-			"TitanRightLeg",
-			Vector3.new(2.4, 7.3, 2.4),
-			armorDark,
-			Enum.Material.Metal
-		)
-		local leftPauldron = createBodyPart(
-			model,
-			"TitanLeftPauldron",
-			Vector3.new(2.9, 1.4, 3.2),
-			armorTrim,
-			Enum.Material.Metal
-		)
-		local rightPauldron = createBodyPart(
-			model,
-			"TitanRightPauldron",
-			Vector3.new(2.9, 1.4, 3.2),
-			armorTrim,
-			Enum.Material.Metal
-		)
-		local capeUpper = createBodyPart(
-			model,
-			"TitanCapeUpper",
-			Vector3.new(5.4, 3.6, 0.45),
-			capeColor,
-			Enum.Material.Fabric
-		)
-		local capeLower = createBodyPart(
-			model,
-			"TitanCapeLower",
-			Vector3.new(6.0, 5.2, 0.45),
-			capeColor,
-			Enum.Material.Fabric
-		)
-		local crownBand = createBodyPart(
-			model,
-			"TitanCrownBand",
-			Vector3.new(3.9, 0.55, 3.9),
-			armorTrim,
-			Enum.Material.Metal
-		)
-		local heartCore = createBodyPart(
-			model,
-			"TitanHeartCore",
-			Vector3.new(0.92, 0.92, 0.92),
-			Color3.fromRGB(255, 78, 56),
-			Enum.Material.Neon
-		)
-		heartCore.Shape = Enum.PartType.Ball
-
-		local coreLight = Instance.new("PointLight")
-		coreLight.Color = Color3.fromRGB(255, 108, 86)
-		coreLight.Brightness = 2.2
-		coreLight.Range = 16
-		coreLight.Parent = heartCore
-
-		local auraRingOuter = createBodyPart(
-			model,
-			"TitanAuraRingOuter",
-			Vector3.new(16, 0.22, 16),
-			Color3.fromRGB(255, 72, 72),
-			Enum.Material.Neon
-		)
-		auraRingOuter.Shape = Enum.PartType.Cylinder
-		auraRingOuter.Transparency = 0.42
-
-		local auraRingInner = createBodyPart(
-			model,
-			"TitanAuraRingInner",
-			Vector3.new(10, 0.2, 10),
-			Color3.fromRGB(255, 168, 78),
-			Enum.Material.Neon
-		)
-		auraRingInner.Shape = Enum.PartType.Cylinder
-		auraRingInner.Transparency = 0.5
+		local bossMesh = cloneBossMesh(model)
 
 		local bossAuraLight = Instance.new("PointLight")
 		bossAuraLight.Name = "BossAuraLight"
@@ -976,57 +862,38 @@ local function spawnInfected(unitId: number, parent: Folder, archetype: Infected
 		leftEye = createBodyPart(
 			model,
 			"TitanLeftEye",
-			Vector3.new(0.5, 0.5, 0.5),
+			Vector3.new(0.18, 0.18, 0.18),
 			eyeIdleColor,
 			Enum.Material.Neon
 		)
 		rightEye = createBodyPart(
 			model,
 			"TitanRightEye",
-			Vector3.new(0.5, 0.5, 0.5),
+			Vector3.new(0.18, 0.18, 0.18),
 			eyeIdleColor,
 			Enum.Material.Neon
 		)
 		leftEye.Shape = Enum.PartType.Ball
 		rightEye.Shape = Enum.PartType.Ball
+		leftEye.Transparency = 1
+		rightEye.Transparency = 1
 
-		addVisual(visuals, torso, CFrame.new(0, 1.9, 0) * CFrame.Angles(math.rad(9), 0, 0))
-		addVisual(visuals, chestPlate, CFrame.new(0, 2.2, -2.3) * CFrame.Angles(math.rad(14), 0, 0))
-		addVisual(visuals, abdomenPlate, CFrame.new(0, 0.2, -1.9) * CFrame.Angles(math.rad(16), 0, 0))
-		addVisual(visuals, head, CFrame.new(0, 6.2, -0.4) * CFrame.Angles(math.rad(13), 0, 0))
-		addVisual(visuals, jaw, CFrame.new(0, 4.9, -1.55) * CFrame.Angles(math.rad(10), 0, 0))
-		addVisual(visuals, leftArm, CFrame.new(-4.4, 2.2, -0.15) * CFrame.Angles(math.rad(16), 0, math.rad(-15)))
-		addVisual(visuals, leftForearm, CFrame.new(-4.95, -1.15, -0.25) * CFrame.Angles(math.rad(14), 0, math.rad(-11)))
-		addVisual(visuals, rightArm, CFrame.new(4.4, 2.2, -0.15) * CFrame.Angles(math.rad(16), 0, math.rad(15)))
-		addVisual(visuals, rightForearm, CFrame.new(4.95, -1.15, -0.25) * CFrame.Angles(math.rad(14), 0, math.rad(11)))
-		addVisual(visuals, leftLeg, CFrame.new(-1.8, -4.25, 0.05))
-		addVisual(visuals, rightLeg, CFrame.new(1.8, -4.25, 0.05))
-		addVisual(visuals, leftPauldron, CFrame.new(-3.2, 3.9, -0.05) * CFrame.Angles(0, 0, math.rad(-24)))
-		addVisual(visuals, rightPauldron, CFrame.new(3.2, 3.9, -0.05) * CFrame.Angles(0, 0, math.rad(24)))
-		addVisual(visuals, capeUpper, CFrame.new(0, 2.9, 2.05) * CFrame.Angles(math.rad(-8), 0, 0))
-		addVisual(visuals, capeLower, CFrame.new(0, -0.45, 2.45) * CFrame.Angles(math.rad(-5), 0, 0))
-		addVisual(visuals, crownBand, CFrame.new(0, 7.28, -0.25))
-		addVisual(visuals, heartCore, CFrame.new(0, 1.95, -2.34))
-		addVisual(visuals, auraRingOuter, CFrame.new(0, -5.95, 0))
-		addVisual(visuals, auraRingInner, CFrame.new(0, -5.87, 0))
-		addVisual(visuals, leftEye, CFrame.new(-0.62, 6.25, -1.95))
-		addVisual(visuals, rightEye, CFrame.new(0.62, 6.25, -1.95))
-
-		for i = 1, 8 do
-			local angle = ((i - 1) / 8) * math.pi * 2
-			local spike = createBodyPart(
+		if bossMesh then
+			local halfHeight = bossMesh.Size.Y * 0.5
+			local configuredOffset = bossConfig.MeshVerticalOffset
+			local verticalOffset = if typeof(configuredOffset) == "number"
+				then configuredOffset
+				else 0
+			addVisual(visuals, bossMesh, CFrame.new(0, halfHeight - 3.5 + verticalOffset, 0))
+		else
+			local fallbackCore = createBodyPart(
 				model,
-				("TitanCrownSpike_%d"):format(i),
-				Vector3.new(0.24, 1.7, 0.24),
-				armorTrim,
-				Enum.Material.Metal
+				"TitanFallbackCore",
+				Vector3.new(5.4, 8.2, 3.6),
+				Color3.fromRGB(126, 88, 62),
+				Enum.Material.SmoothPlastic
 			)
-			addVisual(
-				visuals,
-				spike,
-				CFrame.new(math.cos(angle) * 1.72, 8.45, -0.25 + math.sin(angle) * 1.72)
-					* CFrame.Angles(math.rad(-16), angle, 0)
-			)
+			addVisual(visuals, fallbackCore, CFrame.new(0, 2.2, 0))
 		end
 
 		local bossLabel = Instance.new("BillboardGui")

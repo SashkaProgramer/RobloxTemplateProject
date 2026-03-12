@@ -3,7 +3,7 @@
 local FeatureFlags = {
 	UseHospitalWorld = true,
 	EnableLegacyWorld = false,
-	EnableLegacyInfected = false,
+	EnableLegacyInfected = true,
 	EnableLegacyCombat = false,
 }
 
