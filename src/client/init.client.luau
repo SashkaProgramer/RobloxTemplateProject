@@ -130,6 +130,78 @@ local toastCorner = Instance.new("UICorner")
 toastCorner.CornerRadius = UDim.new(0, 8)
 toastCorner.Parent = toast
 
+local resultPanel = Instance.new("Frame")
+resultPanel.Name = "ResultPanel"
+resultPanel.Visible = false
+resultPanel.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
+resultPanel.BackgroundTransparency = 0.12
+resultPanel.Size = UDim2.fromOffset(360, 170)
+resultPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+resultPanel.Position = UDim2.fromScale(0.5, 0.34)
+resultPanel.Parent = screenGui
+
+local resultPanelCorner = Instance.new("UICorner")
+resultPanelCorner.CornerRadius = UDim.new(0, 10)
+resultPanelCorner.Parent = resultPanel
+
+local resultPanelStroke = Instance.new("UIStroke")
+resultPanelStroke.Color = Color3.fromRGB(92, 108, 124)
+resultPanelStroke.Transparency = 0.35
+resultPanelStroke.Thickness = 1.5
+resultPanelStroke.Parent = resultPanel
+
+local resultTitle = Instance.new("TextLabel")
+resultTitle.Name = "Title"
+resultTitle.BackgroundTransparency = 1
+resultTitle.Size = UDim2.fromOffset(320, 28)
+resultTitle.Position = UDim2.fromOffset(20, 16)
+resultTitle.Font = Enum.Font.GothamBold
+resultTitle.TextSize = 20
+resultTitle.TextXAlignment = Enum.TextXAlignment.Left
+resultTitle.TextColor3 = Color3.fromRGB(236, 240, 245)
+resultTitle.Text = "Raid Result"
+resultTitle.Parent = resultPanel
+
+local resultSummary = Instance.new("TextLabel")
+resultSummary.Name = "Summary"
+resultSummary.BackgroundTransparency = 1
+resultSummary.Size = UDim2.fromOffset(320, 42)
+resultSummary.Position = UDim2.fromOffset(20, 50)
+resultSummary.Font = Enum.Font.GothamMedium
+resultSummary.TextWrapped = true
+resultSummary.TextXAlignment = Enum.TextXAlignment.Left
+resultSummary.TextYAlignment = Enum.TextYAlignment.Top
+resultSummary.TextSize = 16
+resultSummary.TextColor3 = Color3.fromRGB(214, 221, 228)
+resultSummary.Text = ""
+resultSummary.Parent = resultPanel
+
+local resultValueLabel = Instance.new("TextLabel")
+resultValueLabel.Name = "Value"
+resultValueLabel.BackgroundTransparency = 1
+resultValueLabel.Size = UDim2.fromOffset(320, 24)
+resultValueLabel.Position = UDim2.fromOffset(20, 102)
+resultValueLabel.Font = Enum.Font.GothamBold
+resultValueLabel.TextSize = 17
+resultValueLabel.TextXAlignment = Enum.TextXAlignment.Left
+resultValueLabel.TextColor3 = Color3.fromRGB(231, 205, 114)
+resultValueLabel.Text = ""
+resultValueLabel.Parent = resultPanel
+
+local resultReasonLabel = Instance.new("TextLabel")
+resultReasonLabel.Name = "Reason"
+resultReasonLabel.BackgroundTransparency = 1
+resultReasonLabel.Size = UDim2.fromOffset(320, 30)
+resultReasonLabel.Position = UDim2.fromOffset(20, 130)
+resultReasonLabel.Font = Enum.Font.Gotham
+resultReasonLabel.TextWrapped = true
+resultReasonLabel.TextXAlignment = Enum.TextXAlignment.Left
+resultReasonLabel.TextYAlignment = Enum.TextYAlignment.Top
+resultReasonLabel.TextSize = 14
+resultReasonLabel.TextColor3 = Color3.fromRGB(163, 172, 184)
+resultReasonLabel.Text = ""
+resultReasonLabel.Parent = resultPanel
+
 local hpFrame = Instance.new("Frame")
 hpFrame.Name = "HpFrame"
 hpFrame.BackgroundColor3 = Color3.fromRGB(19, 22, 30)
@@ -326,6 +398,13 @@ local localPlayerExtracted = false
 local currentZoneId = "--"
 local currentObjectivesCompleted = 0
 local currentObjectivesRequired = 0
+
+local function hideResultPanel()
+	resultPanel.Visible = false
+	resultSummary.Text = ""
+	resultValueLabel.Text = ""
+	resultReasonLabel.Text = ""
+end
 
 local function refreshRoundHud()
 	phaseLabel.Text = ("Phase: %s"):format(currentRoundPhase)
@@ -592,6 +671,53 @@ local function formatLocalMatchSummaryToast(localResult: any, roundReason: strin
 	end
 
 	return formatRoundResolutionToast(false, roundReason)
+end
+
+local function showResultPanel(titleText: string, summaryText: string, valueText: string, reasonText: string?, accentColor: Color3)
+	resultTitle.Text = titleText
+	resultSummary.Text = summaryText
+	resultValueLabel.Text = valueText
+	resultReasonLabel.Text = reasonText or ""
+	resultValueLabel.TextColor3 = accentColor
+	resultPanelStroke.Color = accentColor
+	resultPanel.Visible = true
+end
+
+local function presentLocalMatchSummary(localResult: any, roundReason: string?): string?
+	if typeof(localResult) ~= "table" then
+		return nil
+	end
+
+	local didExtract = localResult.didExtract == true
+	local carriedValue = math.max(0, tonumber(localResult.carriedValue) or 0)
+	local securedValue = math.max(0, tonumber(localResult.securedValue) or 0)
+	local lossReason = localResult.lossReason
+	if typeof(lossReason) ~= "string" then
+		lossReason = nil
+	end
+
+	if didExtract then
+		showResultPanel(
+			"Raid Result: Extracted",
+			"You secured your carried loot and escaped the hospital.",
+			("Secured Value: %d"):format(securedValue),
+			if roundReason == "ExtractionFull" then "The last extraction slot was claimed with your escape." else nil,
+			Color3.fromRGB(120, 198, 142)
+		)
+	else
+		local reasonText = formatMatchLossReason(lossReason)
+		showResultPanel(
+			"Raid Result: Failed",
+			if carriedValue > 0
+				then ("You lost %d carried value before it could be secured."):format(carriedValue)
+				else "You did not secure any carried loot this run.",
+			("Secured Value: %d"):format(securedValue),
+			("Loss Reason: %s"):format(reasonText),
+			Color3.fromRGB(214, 108, 108)
+		)
+	end
+
+	return formatLocalMatchSummaryToast(localResult, roundReason)
 end
 
 local function updateHpLabel()
@@ -873,6 +999,9 @@ end)
 
 roundStateChangedEvent.OnClientEvent:Connect(function(data)
 	currentRoundPhase = tostring(data.phase or "Lobby")
+	if currentRoundPhase == "Preparation" or currentRoundPhase == "Lobby" then
+		hideResultPanel()
+	end
 	refreshRoundHud()
 end)
 
@@ -944,9 +1073,9 @@ matchResultEvent.OnClientEvent:Connect(function(data)
 		reason = nil
 	end
 
-	local localSummaryToast = formatLocalMatchSummaryToast(data.localResult, reason)
-	if localSummaryToast then
-		setToast(localSummaryToast)
+	local panelToast = presentLocalMatchSummary(data.localResult, reason)
+	if panelToast then
+		setToast(panelToast)
 		return
 	end
 
