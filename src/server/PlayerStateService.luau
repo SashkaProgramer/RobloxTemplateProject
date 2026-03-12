@@ -34,6 +34,13 @@ type PlayerState = {
 	round: PlayerRoundState,
 }
 
+type MatchSummaryPayload = {
+	didExtract: boolean,
+	carriedValue: number,
+	securedValue: number,
+	lossReason: string?,
+}
+
 local PlayerStateService = {}
 
 local states: { [Player]: PlayerState } = {}
@@ -272,6 +279,42 @@ local function pushAllState(player: Player)
 	pushInventory(player)
 end
 
+local function buildMatchSummary(player: Player, roundReason: string?): MatchSummaryPayload
+	local state = getOrCreateState(player)
+	if not state then
+		return {
+			didExtract = false,
+			carriedValue = 0,
+			securedValue = 0,
+			lossReason = "StateUnavailable",
+		}
+	end
+
+	local didExtract = state.round.extracted
+	local carriedValue = state.round.carriedValue
+	local securedValue = if didExtract then carriedValue else 0
+	local lossReason: string? = nil
+
+	if not didExtract then
+		if not state.round.alive then
+			lossReason = "DiedBeforeExtraction"
+		elseif roundReason == "ExtractionFull" then
+			lossReason = "NoExtractionSlot"
+		elseif roundReason == "NoActivePlayersRemaining" then
+			lossReason = "NoSurvivorsRemaining"
+		else
+			lossReason = "LootNotSecured"
+		end
+	end
+
+	return {
+		didExtract = didExtract,
+		carriedValue = carriedValue,
+		securedValue = securedValue,
+		lossReason = lossReason,
+	}
+end
+
 function PlayerStateService.AddScrap(player: Player, amount: number)
 	local state = getOrCreateState(player)
 	if not state then
@@ -491,6 +534,10 @@ function PlayerStateService.Start(netFolder: Folder)
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end
+
+	RoundService.RegisterMatchSummaryProvider(function(player: Player, roundReason: string?): MatchSummaryPayload
+		return buildMatchSummary(player, roundReason)
+	end)
 
 	RoundService.OnPhaseChanged(function(newPhase: string)
 		if newPhase ~= "Preparation" then

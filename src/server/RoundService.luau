@@ -19,6 +19,13 @@ type RoundRuntimeState = {
 	activePlayers: number,
 }
 
+type MatchSummaryPayload = {
+	didExtract: boolean,
+	carriedValue: number,
+	securedValue: number,
+	lossReason: string?,
+}
+
 local RoundService = {}
 
 local roundStateChangedEvent: RemoteEvent
@@ -36,6 +43,7 @@ local extractedUserIds: { number } = {}
 local phaseChangedListeners: { (RoundPhase, RoundPhase?) -> () } = {}
 local resolvedEarlyReason: string? = nil
 local setPhase: (RoundPhase) -> ()
+local matchSummaryProvider: ((Player, string?) -> MatchSummaryPayload)? = nil
 
 local function getActivePlayerCount(): number
 	return #Players:GetPlayers()
@@ -137,13 +145,23 @@ setPhase = function(nextPhase: RoundPhase)
 	broadcastExtractionState()
 
 	if nextPhase == RoundDefs.Phases.Resolved then
-		matchResultEvent:FireAllClients({
+		local basePayload = {
 			roundId = currentRoundId,
 			phase = currentPhase,
 			extractedUserIds = table.clone(extractedUserIds),
 			extractionSlots = RoundDefs.Config.extractionSlots,
 			reason = resolvedEarlyReason,
-		})
+		}
+
+		if matchSummaryProvider then
+			for _, player in Players:GetPlayers() do
+				local payload = table.clone(basePayload)
+				payload.localResult = matchSummaryProvider(player, resolvedEarlyReason)
+				matchResultEvent:FireClient(player, payload)
+			end
+		else
+			matchResultEvent:FireAllClients(basePayload)
+		end
 	end
 
 	notifyPhaseChanged(nextPhase, previousPhase)
@@ -291,6 +309,10 @@ end
 
 function RoundService.OnPhaseChanged(listener: (RoundPhase, RoundPhase?) -> ())
 	table.insert(phaseChangedListeners, listener)
+end
+
+function RoundService.RegisterMatchSummaryProvider(provider: (Player, string?) -> MatchSummaryPayload)
+	matchSummaryProvider = provider
 end
 
 return RoundService

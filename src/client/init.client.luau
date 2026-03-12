@@ -546,6 +546,54 @@ local function formatRoundResolutionToast(didExtract: boolean, reason: string?):
 	return "Round resolved: lost carried loot"
 end
 
+local function formatMatchLossReason(lossReason: string?): string
+	if lossReason == "DiedBeforeExtraction" then
+		return "died before extraction"
+	end
+
+	if lossReason == "NoExtractionSlot" then
+		return "evacuation filled up"
+	end
+
+	if lossReason == "NoSurvivorsRemaining" then
+		return "no survivors remained"
+	end
+
+	if lossReason == "LootNotSecured" then
+		return "loot was not secured"
+	end
+
+	return "loot was lost"
+end
+
+local function formatLocalMatchSummaryToast(localResult: any, roundReason: string?): string?
+	if typeof(localResult) ~= "table" then
+		return nil
+	end
+
+	local didExtract = localResult.didExtract == true
+	local carriedValue = math.max(0, tonumber(localResult.carriedValue) or 0)
+	local securedValue = math.max(0, tonumber(localResult.securedValue) or 0)
+	local lossReason = localResult.lossReason
+	if typeof(lossReason) ~= "string" then
+		lossReason = nil
+	end
+
+	if didExtract then
+		if securedValue > 0 then
+			return ("Round resolved: extracted with %d value"):format(securedValue)
+		end
+
+		return formatRoundResolutionToast(true, roundReason)
+	end
+
+	if carriedValue > 0 then
+		return ("Round resolved: lost %d value, %s"):format(carriedValue, formatMatchLossReason(lossReason))
+	end
+
+	return formatRoundResolutionToast(false, roundReason)
+end
+
 local function updateHpLabel()
 	local character = player.Character
 	if not character then
@@ -891,6 +939,17 @@ requestExtractEvent.OnClientEvent:Connect(function(data)
 end)
 
 matchResultEvent.OnClientEvent:Connect(function(data)
+	local reason = data.reason
+	if typeof(reason) ~= "string" then
+		reason = nil
+	end
+
+	local localSummaryToast = formatLocalMatchSummaryToast(data.localResult, reason)
+	if localSummaryToast then
+		setToast(localSummaryToast)
+		return
+	end
+
 	local extractedUserIds = data.extractedUserIds
 	if typeof(extractedUserIds) == "table" then
 		local didExtract = false
@@ -899,11 +958,6 @@ matchResultEvent.OnClientEvent:Connect(function(data)
 				didExtract = true
 				break
 			end
-		end
-
-		local reason = data.reason
-		if typeof(reason) ~= "string" then
-			reason = nil
 		end
 
 		setToast(formatRoundResolutionToast(didExtract or localPlayerExtracted, reason))
