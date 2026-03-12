@@ -6,13 +6,30 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared:WaitForChild("GameConfig"))
+local LootDefs = require(Shared:WaitForChild("LootDefs"))
 local Net = require(Shared:WaitForChild("Net"))
 
-type PlayerState = {
+export type PlayerRoundState = {
+	alive: boolean,
+	extracted: boolean,
+	currentZoneId: string?,
+	inventory: { string },
+	maxSlots: number,
+	carriedValue: number,
+	hasRareLoot: boolean,
+	temporaryFlags: { [string]: boolean },
+}
+
+type LegacyState = {
 	stamina: number,
 	hunger: number,
 	scrap: number,
 	isSprinting: boolean,
+}
+
+type PlayerState = {
+	legacy: LegacyState,
+	round: PlayerRoundState,
 }
 
 local PlayerStateService = {}
@@ -20,6 +37,8 @@ local PlayerStateService = {}
 local states: { [Player]: PlayerState } = {}
 local stateUpdateEvent: RemoteEvent
 local setSprintingEvent: RemoteEvent
+local playerRoundStateChangedEvent: RemoteEvent
+local inventoryUpdatedEvent: RemoteEvent
 local accum = 0
 local nameTagGuiName = "PlayerNameTag"
 
@@ -28,7 +47,55 @@ local function getHumanoid(player: Player): Humanoid?
 	if not character then
 		return nil
 	end
+
 	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function getOrCreateState(player: Player): PlayerState?
+	return states[player]
+end
+
+local function createRoundState(): PlayerRoundState
+	return {
+		alive = true,
+		extracted = false,
+		currentZoneId = nil,
+		inventory = {},
+		maxSlots = 4,
+		carriedValue = 0,
+		hasRareLoot = false,
+		temporaryFlags = {},
+	}
+end
+
+local function createPlayerState(): PlayerState
+	return {
+		legacy = {
+			stamina = GameConfig.Player.MaxStamina,
+			hunger = GameConfig.Player.HungerMax,
+			scrap = 0,
+			isSprinting = false,
+		},
+		round = createRoundState(),
+	}
+end
+
+local function rebuildDerivedRoundState(roundState: PlayerRoundState)
+	local carriedValue = 0
+	local hasRareLoot = false
+
+	for _, lootId in roundState.inventory do
+		local lootDef = LootDefs.getById(lootId)
+		if lootDef then
+			carriedValue += lootDef.value
+			if lootDef.rarity == LootDefs.Rarities.Rare then
+				hasRareLoot = true
+			end
+		end
+	end
+
+	roundState.carriedValue = carriedValue
+	roundState.hasRareLoot = hasRareLoot
 end
 
 local function applyMoveSpeed(player: Player, state: PlayerState)
@@ -37,7 +104,7 @@ local function applyMoveSpeed(player: Player, state: PlayerState)
 		return
 	end
 
-	if state.isSprinting and state.stamina > 0 then
+	if state.legacy.isSprinting and state.legacy.stamina > 0 then
 		humanoid.WalkSpeed = GameConfig.Player.SprintWalkSpeed
 	else
 		humanoid.WalkSpeed = GameConfig.Player.NormalWalkSpeed
@@ -64,6 +131,7 @@ local function resolveNameTagPart(character: Model): BasePart?
 	if waitedRoot and waitedRoot:IsA("BasePart") then
 		return waitedRoot
 	end
+
 	return nil
 end
 
@@ -133,56 +201,211 @@ local function applyConfiguredCharacterState(character: Model)
 	humanoid.Health = maxHealth
 end
 
-local function pushState(player: Player)
-	local state = states[player]
+local function pushLegacyState(player: Player)
+	local state = getOrCreateState(player)
 	if not state then
 		return
 	end
 
 	stateUpdateEvent:FireClient(player, {
-		stamina = math.floor(state.stamina + 0.5),
-		hunger = math.floor(state.hunger + 0.5),
-		scrap = state.scrap,
-		isSprinting = state.isSprinting,
+		stamina = math.floor(state.legacy.stamina + 0.5),
+		hunger = math.floor(state.legacy.hunger + 0.5),
+		scrap = state.legacy.scrap,
+		isSprinting = state.legacy.isSprinting,
 	})
 end
 
-function PlayerStateService.AddScrap(player: Player, amount: number)
-	local state = states[player]
+local function pushRoundState(player: Player)
+	local state = getOrCreateState(player)
 	if not state then
 		return
 	end
 
-	state.scrap += math.max(0, math.floor(amount))
-	pushState(player)
+	playerRoundStateChangedEvent:FireClient(player, {
+		alive = state.round.alive,
+		extracted = state.round.extracted,
+		currentZoneId = state.round.currentZoneId,
+		maxSlots = state.round.maxSlots,
+		carriedValue = state.round.carriedValue,
+		hasRareLoot = state.round.hasRareLoot,
+		temporaryFlags = state.round.temporaryFlags,
+	})
+end
+
+local function pushInventory(player: Player)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	inventoryUpdatedEvent:FireClient(player, {
+		items = table.clone(state.round.inventory),
+		maxSlots = state.round.maxSlots,
+		carriedValue = state.round.carriedValue,
+		hasRareLoot = state.round.hasRareLoot,
+	})
+end
+
+local function pushAllState(player: Player)
+	pushLegacyState(player)
+	pushRoundState(player)
+	pushInventory(player)
+end
+
+function PlayerStateService.AddScrap(player: Player, amount: number)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	state.legacy.scrap += math.max(0, math.floor(amount))
+	pushLegacyState(player)
 end
 
 function PlayerStateService.IsSprinting(player: Player): boolean
-	local state = states[player]
+	local state = getOrCreateState(player)
 	if not state then
 		return false
 	end
-	return state.isSprinting
+
+	return state.legacy.isSprinting
 end
 
-local function onSetSprinting(player: Player, wantsSprint: boolean)
-	local state = states[player]
+function PlayerStateService.GetRoundState(player: Player): PlayerRoundState?
+	local state = getOrCreateState(player)
+	if not state then
+		return nil
+	end
+
+	return state.round
+end
+
+function PlayerStateService.ResetRoundState(player: Player)
+	local state = getOrCreateState(player)
 	if not state then
 		return
 	end
 
-	state.isSprinting = wantsSprint == true and state.stamina > 0
+	state.round = createRoundState()
+	pushRoundState(player)
+	pushInventory(player)
+end
+
+function PlayerStateService.SetAlive(player: Player, isAlive: boolean)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	state.round.alive = isAlive
+	if not isAlive then
+		state.legacy.isSprinting = false
+	end
+
 	applyMoveSpeed(player, state)
-	pushState(player)
+	pushLegacyState(player)
+	pushRoundState(player)
+end
+
+function PlayerStateService.SetExtracted(player: Player, extracted: boolean)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	state.round.extracted = extracted
+	if extracted then
+		state.legacy.isSprinting = false
+	end
+
+	applyMoveSpeed(player, state)
+	pushLegacyState(player)
+	pushRoundState(player)
+end
+
+function PlayerStateService.SetCurrentZoneId(player: Player, currentZoneId: string?)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	state.round.currentZoneId = currentZoneId
+	pushRoundState(player)
+end
+
+function PlayerStateService.SetTemporaryFlag(player: Player, flagName: string, isEnabled: boolean)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	if isEnabled then
+		state.round.temporaryFlags[flagName] = true
+	else
+		state.round.temporaryFlags[flagName] = nil
+	end
+
+	pushRoundState(player)
+end
+
+function PlayerStateService.AddInventoryItem(player: Player, lootId: string): boolean
+	local state = getOrCreateState(player)
+	if not state then
+		return false
+	end
+
+	if not LootDefs.getById(lootId) then
+		return false
+	end
+
+	if #state.round.inventory >= state.round.maxSlots then
+		return false
+	end
+
+	table.insert(state.round.inventory, lootId)
+	rebuildDerivedRoundState(state.round)
+	pushRoundState(player)
+	pushInventory(player)
+	return true
+end
+
+function PlayerStateService.RemoveInventoryItem(player: Player, lootId: string): boolean
+	local state = getOrCreateState(player)
+	if not state then
+		return false
+	end
+
+	for index, itemId in state.round.inventory do
+		if itemId == lootId then
+			table.remove(state.round.inventory, index)
+			rebuildDerivedRoundState(state.round)
+			pushRoundState(player)
+			pushInventory(player)
+			return true
+		end
+	end
+
+	return false
+end
+
+local function onSetSprinting(player: Player, wantsSprint: boolean)
+	local state = getOrCreateState(player)
+	if not state then
+		return
+	end
+
+	local canSprint = wantsSprint == true
+		and state.legacy.stamina > 0
+		and state.round.alive
+		and not state.round.extracted
+
+	state.legacy.isSprinting = canSprint
+	applyMoveSpeed(player, state)
+	pushLegacyState(player)
 end
 
 local function onPlayerAdded(player: Player)
-	states[player] = {
-		stamina = GameConfig.Player.MaxStamina,
-		hunger = GameConfig.Player.HungerMax,
-		scrap = 0,
-		isSprinting = false,
-	}
+	states[player] = createPlayerState()
 
 	player.CharacterAdded:Connect(function(character: Model)
 		applyConfiguredCharacterState(character)
@@ -196,11 +419,14 @@ local function onPlayerAdded(player: Player)
 				applyConfiguredCharacterState(character)
 			end
 		end)
-		local state = states[player]
+
+		local state = getOrCreateState(player)
 		if state then
-			state.isSprinting = false
+			state.legacy.isSprinting = false
+			state.round.alive = true
+			state.round.extracted = false
 			applyMoveSpeed(player, state)
-			pushState(player)
+			pushAllState(player)
 		end
 	end)
 
@@ -214,6 +440,8 @@ local function onPlayerAdded(player: Player)
 			end
 		end)
 	end
+
+	pushAllState(player)
 end
 
 local function onPlayerRemoving(player: Player)
@@ -223,6 +451,9 @@ end
 function PlayerStateService.Start(netFolder: Folder)
 	stateUpdateEvent = netFolder:WaitForChild(Net.Events.StateUpdate) :: RemoteEvent
 	setSprintingEvent = netFolder:WaitForChild(Net.Events.SetSprinting) :: RemoteEvent
+	playerRoundStateChangedEvent = netFolder:WaitForChild(Net.Events.PlayerRoundStateChanged) :: RemoteEvent
+	inventoryUpdatedEvent = netFolder:WaitForChild(Net.Events.InventoryUpdated) :: RemoteEvent
+
 	setSprintingEvent.OnServerEvent:Connect(onSetSprinting)
 
 	Players.PlayerAdded:Connect(onPlayerAdded)
@@ -236,22 +467,26 @@ function PlayerStateService.Start(netFolder: Folder)
 		if accum < 0.2 then
 			return
 		end
+
 		local step = accum
 		accum = 0
 
 		for player, state in states do
-			if state.isSprinting and state.stamina > 0 then
-				state.stamina = math.max(0, state.stamina - GameConfig.Player.StaminaDrainPerSecond * step)
-				if state.stamina <= 0 then
-					state.isSprinting = false
+			if state.legacy.isSprinting and state.legacy.stamina > 0 then
+				state.legacy.stamina = math.max(0, state.legacy.stamina - GameConfig.Player.StaminaDrainPerSecond * step)
+				if state.legacy.stamina <= 0 then
+					state.legacy.isSprinting = false
 				end
 			else
-				state.stamina = math.min(GameConfig.Player.MaxStamina, state.stamina + GameConfig.Player.StaminaRegenPerSecond * step)
+				state.legacy.stamina = math.min(
+					GameConfig.Player.MaxStamina,
+					state.legacy.stamina + GameConfig.Player.StaminaRegenPerSecond * step
+				)
 			end
 
-			state.hunger = math.max(0, state.hunger - GameConfig.Player.HungerDrainPerSecond * step)
+			state.legacy.hunger = math.max(0, state.legacy.hunger - GameConfig.Player.HungerDrainPerSecond * step)
 			applyMoveSpeed(player, state)
-			pushState(player)
+			pushLegacyState(player)
 		end
 	end)
 end

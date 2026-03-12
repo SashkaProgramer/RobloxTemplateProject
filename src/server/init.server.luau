@@ -5,11 +5,15 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local GameConfig = require(Shared:WaitForChild("GameConfig"))
+local FeatureFlags = require(Shared:WaitForChild("FeatureFlags"))
 local Net = require(Shared:WaitForChild("Net"))
 
 local PlayerStateService = require(script:WaitForChild("PlayerStateService"))
 local LootService = require(script:WaitForChild("LootService"))
+local ExtractionService = require(script:WaitForChild("ExtractionService"))
 local InfectedService = require(script:WaitForChild("InfectedService"))
+local RoundService = require(script:WaitForChild("RoundService"))
+local HospitalWorldService = require(script:WaitForChild("HospitalWorldService"))
 local WorldService = require(script:WaitForChild("WorldService"))
 local WeaponService = require(script:WaitForChild("WeaponService"))
 
@@ -31,61 +35,73 @@ for _, eventName in Net.Events do
 	end
 end
 
-WorldService.Start()
+if FeatureFlags.UseHospitalWorld then
+	HospitalWorldService.Start()
+	WorldService.Start(netFolder :: Folder)
+elseif FeatureFlags.EnableLegacyWorld then
+	WorldService.Start(netFolder :: Folder)
+end
+
+RoundService.Start(netFolder :: Folder)
 PlayerStateService.Start(netFolder :: Folder)
 LootService.Start(netFolder :: Folder)
-InfectedService.Start()
-
-local aimUpdateEvent = netFolder:WaitForChild(Net.Events.AimUpdate) :: RemoteEvent
-local playerAttackEvent = netFolder:WaitForChild(Net.Events.PlayerAttack) :: RemoteEvent
-local attackFeedbackEvent = netFolder:WaitForChild(Net.Events.AttackFeedback) :: RemoteEvent
-
-local function processGrenadeAttack(player: Player, impactPosition: Vector3?)
-	local didHit = InfectedService.TryPlayerGrenadeAttack(player, impactPosition)
-	attackFeedbackEvent:FireClient(player, {
-		hit = didHit,
-	})
+ExtractionService.Start(netFolder :: Folder)
+if FeatureFlags.EnableLegacyInfected then
+	InfectedService.Start()
 end
 
-local function processSwordAttack(player: Player)
-	local didHit = InfectedService.TryPlayerAttack(player)
-	attackFeedbackEvent:FireClient(player, {
-		hit = didHit,
-	})
+if FeatureFlags.EnableLegacyCombat then
+	local aimUpdateEvent = netFolder:WaitForChild(Net.Events.AimUpdate) :: RemoteEvent
+	local playerAttackEvent = netFolder:WaitForChild(Net.Events.PlayerAttack) :: RemoteEvent
+	local attackFeedbackEvent = netFolder:WaitForChild(Net.Events.AttackFeedback) :: RemoteEvent
+
+	local function processGrenadeAttack(player: Player, impactPosition: Vector3?)
+		local didHit = InfectedService.TryPlayerGrenadeAttack(player, impactPosition)
+		attackFeedbackEvent:FireClient(player, {
+			hit = didHit,
+		})
+	end
+
+	local function processSwordAttack(player: Player)
+		local didHit = InfectedService.TryPlayerAttack(player)
+		attackFeedbackEvent:FireClient(player, {
+			hit = didHit,
+		})
+	end
+
+	aimUpdateEvent.OnServerEvent:Connect(function(player: Player, aimPoint: Vector3)
+		if typeof(aimPoint) ~= "Vector3" then
+			return
+		end
+
+		local character = player.Character
+		local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+		if not root or not root:IsA("BasePart") then
+			return
+		end
+
+		local offset = aimPoint - root.Position
+		local maxDistance = GameConfig.Player.GrenadeRange * 1.35
+		if offset.Magnitude > maxDistance and offset.Magnitude > 0.01 then
+			aimPoint = root.Position + offset.Unit * maxDistance
+		end
+
+		playerAimPoints[player] = aimPoint
+	end)
+
+	playerAttackEvent.OnServerEvent:Connect(function(player: Player)
+		WeaponService.TryFire(player)
+	end)
+
+	WeaponService.Start(function(player: Player): Vector3?
+		return playerAimPoints[player]
+	end, function(player: Player, impactPosition: Vector3)
+		processGrenadeAttack(player, impactPosition)
+	end, function(player: Player)
+		processSwordAttack(player)
+	end)
 end
-
-aimUpdateEvent.OnServerEvent:Connect(function(player: Player, aimPoint: Vector3)
-	if typeof(aimPoint) ~= "Vector3" then
-		return
-	end
-
-	local character = player.Character
-	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
-	if not root or not root:IsA("BasePart") then
-		return
-	end
-
-	local offset = aimPoint - root.Position
-	local maxDistance = GameConfig.Player.GrenadeRange * 1.35
-	if offset.Magnitude > maxDistance and offset.Magnitude > 0.01 then
-		aimPoint = root.Position + offset.Unit * maxDistance
-	end
-
-	playerAimPoints[player] = aimPoint
-end)
-
-playerAttackEvent.OnServerEvent:Connect(function(player: Player)
-	WeaponService.TryFire(player)
-end)
 
 Players.PlayerRemoving:Connect(function(player: Player)
 	playerAimPoints[player] = nil
-end)
-
-WeaponService.Start(function(player: Player): Vector3?
-	return playerAimPoints[player]
-end, function(player: Player, impactPosition: Vector3)
-	processGrenadeAttack(player, impactPosition)
-end, function(player: Player)
-	processSwordAttack(player)
 end)

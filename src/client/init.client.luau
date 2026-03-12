@@ -13,15 +13,27 @@ local playerGui = player:WaitForChild("PlayerGui")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared:WaitForChild("Net"))
 local GameConfig = require(Shared:WaitForChild("GameConfig"))
+local FeatureFlags = require(Shared:WaitForChild("FeatureFlags"))
 
 local netFolder = ReplicatedStorage:WaitForChild(Net.FolderName)
 local stateUpdateEvent = netFolder:WaitForChild(Net.Events.StateUpdate) :: RemoteEvent
 local setSprintingEvent = netFolder:WaitForChild(Net.Events.SetSprinting) :: RemoteEvent
 local scavengeResultEvent = netFolder:WaitForChild(Net.Events.ScavengeResult) :: RemoteEvent
 local medkitPickupEvent = netFolder:WaitForChild(Net.Events.MedkitPickup) :: RemoteEvent
+local roundStateChangedEvent = netFolder:WaitForChild(Net.Events.RoundStateChanged) :: RemoteEvent
+local roundTimerUpdatedEvent = netFolder:WaitForChild(Net.Events.RoundTimerUpdated) :: RemoteEvent
+local playerRoundStateChangedEvent = netFolder:WaitForChild(Net.Events.PlayerRoundStateChanged) :: RemoteEvent
+local inventoryUpdatedEvent = netFolder:WaitForChild(Net.Events.InventoryUpdated) :: RemoteEvent
+local requestInteractEvent = netFolder:WaitForChild(Net.Events.RequestInteract) :: RemoteEvent
+local requestDropLootEvent = netFolder:WaitForChild(Net.Events.RequestDropLoot) :: RemoteEvent
+local requestUseItemEvent = netFolder:WaitForChild(Net.Events.RequestUseItem) :: RemoteEvent
+local requestExtractEvent = netFolder:WaitForChild(Net.Events.RequestExtract) :: RemoteEvent
+local requestSabotageEvent = netFolder:WaitForChild(Net.Events.RequestSabotage) :: RemoteEvent
 local aimUpdateEvent = netFolder:WaitForChild(Net.Events.AimUpdate) :: RemoteEvent
 local playerAttackEvent = netFolder:WaitForChild(Net.Events.PlayerAttack) :: RemoteEvent
 local attackFeedbackEvent = netFolder:WaitForChild(Net.Events.AttackFeedback) :: RemoteEvent
+local matchResultEvent = netFolder:WaitForChild(Net.Events.MatchResult) :: RemoteEvent
+local sabotageFeedbackEvent = netFolder:WaitForChild(Net.Events.SabotageFeedback) :: RemoteEvent
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SurvivalHud"
@@ -32,8 +44,8 @@ local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.BackgroundColor3 = Color3.fromRGB(18, 20, 22)
 panel.BackgroundTransparency = 0.2
-panel.Size = UDim2.fromOffset(280, 130)
-panel.Position = UDim2.new(0, 20, 1, -150)
+panel.Size = UDim2.fromOffset(280, 218)
+panel.Position = UDim2.new(0, 20, 1, -238)
 panel.Parent = screenGui
 
 local panelCorner = Instance.new("UICorner")
@@ -71,6 +83,26 @@ local scrapLabel = staminaLabel:Clone()
 scrapLabel.Position = UDim2.fromOffset(10, 84)
 scrapLabel.Text = "Scrap: 0"
 scrapLabel.Parent = panel
+
+local phaseLabel = staminaLabel:Clone()
+phaseLabel.Position = UDim2.fromOffset(10, 112)
+phaseLabel.Text = "Phase: Lobby"
+phaseLabel.Parent = panel
+
+local timerLabel = staminaLabel:Clone()
+timerLabel.Position = UDim2.fromOffset(10, 136)
+timerLabel.Text = "Timer: --"
+timerLabel.Parent = panel
+
+local carriedLabel = staminaLabel:Clone()
+carriedLabel.Position = UDim2.fromOffset(10, 160)
+carriedLabel.Text = "Carried Value: 0"
+carriedLabel.Parent = panel
+
+local inventoryLabel = staminaLabel:Clone()
+inventoryLabel.Position = UDim2.fromOffset(10, 184)
+inventoryLabel.Text = "Inventory: empty"
+inventoryLabel.Parent = panel
 
 local toast = Instance.new("TextLabel")
 toast.BackgroundColor3 = Color3.fromRGB(38, 52, 38)
@@ -271,6 +303,101 @@ local gamepadCrosshairPixelOffset = Vector2.new(0, -44)
 local attackActionName = "ConsolePrimaryAction"
 local equipLauncherActionName = "ConsoleEquipLauncher"
 local equipBladeActionName = "ConsoleEquipBlade"
+local currentRoundPhase = "Lobby"
+local currentRoundTimeRemaining = 0
+local currentInventory: { string } = {}
+local currentCarriedValue = 0
+local currentExtractionOpen = false
+local currentExtractionSlotsRemaining = 0
+local currentHasRareLoot = false
+local legacyCombatEnabled = FeatureFlags.EnableLegacyCombat == true
+local localPlayerExtracted = false
+
+local function refreshRoundHud()
+	phaseLabel.Text = ("Phase: %s"):format(currentRoundPhase)
+	if currentExtractionOpen then
+		timerLabel.Text = ("Extraction: OPEN (%d left)"):format(currentExtractionSlotsRemaining)
+	else
+		timerLabel.Text = ("Timer: %ds"):format(math.max(0, currentRoundTimeRemaining))
+	end
+
+	carriedLabel.Text = ("Carried Value: %d"):format(currentCarriedValue)
+
+	if #currentInventory == 0 then
+		inventoryLabel.Text = "Inventory: empty"
+	else
+		local summary = table.concat(currentInventory, ", ")
+		if currentHasRareLoot then
+			summary ..= " [RARE]"
+		end
+		inventoryLabel.Text = ("Inventory: %s"):format(summary)
+	end
+end
+
+local function getCharacterRoot(): BasePart?
+	local character = player.Character
+	if not character then
+		return nil
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root
+	end
+
+	return nil
+end
+
+local function getNearestDoorId(maxDistance: number): string?
+	local root = getCharacterRoot()
+	if not root then
+		return nil
+	end
+
+	local nearestDistance = maxDistance
+	local nearestDoorId: string? = nil
+
+	for _, descendant in Workspace:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			local doorId = descendant:GetAttribute("DoorId")
+			if typeof(doorId) == "string" then
+				local distance = (root.Position - descendant.Position).Magnitude
+				if distance <= nearestDistance then
+					nearestDistance = distance
+					nearestDoorId = doorId
+				end
+			end
+		end
+	end
+
+	return nearestDoorId
+end
+
+local function getNearestZoneId(maxDistance: number): string?
+	local root = getCharacterRoot()
+	if not root then
+		return nil
+	end
+
+	local nearestDistance = maxDistance
+	local nearestZoneId: string? = nil
+
+	for _, descendant in Workspace:GetDescendants() do
+		if descendant:IsA("Model") then
+			local zoneId = descendant:GetAttribute("ZoneId")
+			local primaryPart = descendant.PrimaryPart
+			if typeof(zoneId) == "string" and primaryPart then
+				local distance = (root.Position - primaryPart.Position).Magnitude
+				if distance <= nearestDistance then
+					nearestDistance = distance
+					nearestZoneId = zoneId
+				end
+			end
+		end
+	end
+
+	return nearestZoneId
+end
 
 local function isGamepadInputType(inputType: Enum.UserInputType): boolean
 	return inputType == Enum.UserInputType.Gamepad1
@@ -309,6 +436,11 @@ local function getCrosshairPixelOffset(): Vector2
 end
 
 local function updateCrosshairLayout()
+	if not legacyCombatEnabled then
+		crosshair.Visible = false
+		return
+	end
+
 	local crosshairPixelOffset = getCrosshairPixelOffset()
 	crosshair.Position = UDim2.new(0.5, crosshairPixelOffset.X, 0.5, crosshairPixelOffset.Y)
 
@@ -406,6 +538,10 @@ local function isSupportedWeapon(tool: Tool?): boolean
 end
 
 local function getEquippedWeapon(): Tool?
+	if not legacyCombatEnabled then
+		return nil
+	end
+
 	local character = player.Character
 	if not character then
 		return nil
@@ -418,6 +554,10 @@ local function getEquippedWeapon(): Tool?
 end
 
 local function getEquippedLauncher(): Tool?
+	if not legacyCombatEnabled then
+		return nil
+	end
+
 	local tool = getEquippedWeapon()
 	if tool and tool.Name == launcherName then
 		return tool
@@ -426,6 +566,10 @@ local function getEquippedLauncher(): Tool?
 end
 
 local function equipWeaponByName(weaponName: string)
+	if not legacyCombatEnabled then
+		return
+	end
+
 	local character = player.Character
 	if not character then
 		return
@@ -466,6 +610,10 @@ local function getHumanoid(): Humanoid?
 end
 
 local function computeAimPoint(): Vector3?
+	if not legacyCombatEnabled then
+		return nil
+	end
+
 	local camera = Workspace.CurrentCamera
 	if not camera then
 		return nil
@@ -494,6 +642,11 @@ local function computeAimPoint(): Vector3?
 end
 
 local function pushAimUpdate(force: boolean)
+	if not legacyCombatEnabled then
+		crosshair.Visible = false
+		return
+	end
+
 	local equippedLauncher = getEquippedLauncher()
 	crosshair.Visible = equippedLauncher ~= nil
 	updateCrosshairLayout()
@@ -522,6 +675,10 @@ local function pushAimUpdate(force: boolean)
 end
 
 local function triggerPrimaryAction()
+	if not legacyCombatEnabled then
+		return
+	end
+
 	pushAimUpdate(true)
 	if getEquippedWeapon() then
 		playerAttackEvent:FireServer()
@@ -575,6 +732,7 @@ end)
 
 updateCrosshairLayout()
 updateStaminaHud(GameConfig.Player.MaxStamina)
+refreshRoundHud()
 
 stateUpdateEvent.OnClientEvent:Connect(function(data)
 	local stamina = tonumber(data.stamina) or 0
@@ -604,12 +762,88 @@ medkitPickupEvent.OnClientEvent:Connect(function(data)
 	end
 end)
 
+roundStateChangedEvent.OnClientEvent:Connect(function(data)
+	currentRoundPhase = tostring(data.phase or "Lobby")
+	refreshRoundHud()
+end)
+
+roundTimerUpdatedEvent.OnClientEvent:Connect(function(data)
+	currentRoundTimeRemaining = math.max(0, tonumber(data.timeRemaining) or 0)
+	refreshRoundHud()
+end)
+
+playerRoundStateChangedEvent.OnClientEvent:Connect(function(data)
+	currentCarriedValue = math.max(0, tonumber(data.carriedValue) or 0)
+	currentHasRareLoot = data.hasRareLoot == true
+	localPlayerExtracted = data.extracted == true
+	refreshRoundHud()
+end)
+
+inventoryUpdatedEvent.OnClientEvent:Connect(function(data)
+	currentInventory = {}
+	local items = data.items
+	if typeof(items) == "table" then
+		for _, item in items do
+			if typeof(item) == "string" then
+				table.insert(currentInventory, item)
+			end
+		end
+	end
+	currentCarriedValue = math.max(0, tonumber(data.carriedValue) or currentCarriedValue)
+	currentHasRareLoot = data.hasRareLoot == true
+	refreshRoundHud()
+end)
+
+local extractionStateChangedEvent = netFolder:WaitForChild(Net.Events.ExtractionStateChanged) :: RemoteEvent
+extractionStateChangedEvent.OnClientEvent:Connect(function(data)
+	currentExtractionOpen = data.isOpen == true
+	currentExtractionSlotsRemaining = math.max(0, tonumber(data.slotsRemaining) or 0)
+	refreshRoundHud()
+end)
+
 attackFeedbackEvent.OnClientEvent:Connect(function(data)
+	if not legacyCombatEnabled then
+		return
+	end
+
 	if data.hit == true then
 		setToast("Target reached")
 	else
 		setToast("No target")
 	end
+end)
+
+requestExtractEvent.OnClientEvent:Connect(function(data)
+	if data.ok == true then
+		setToast("Extraction locked in")
+	else
+		local reason = tostring(data.reason or "ExtractionFailed")
+		setToast(("Extraction failed: %s"):format(reason))
+	end
+end)
+
+matchResultEvent.OnClientEvent:Connect(function(data)
+	local extractedUserIds = data.extractedUserIds
+	if typeof(extractedUserIds) == "table" then
+		local didExtract = false
+		for _, userId in extractedUserIds do
+			if tonumber(userId) == player.UserId then
+				didExtract = true
+				break
+			end
+		end
+
+		if didExtract or localPlayerExtracted then
+			setToast("Round resolved: extracted")
+		else
+			setToast("Round resolved: lost carried loot")
+		end
+	end
+end)
+
+sabotageFeedbackEvent.OnClientEvent:Connect(function(data)
+	local message = tostring(data.message or "Action failed")
+	setToast(message)
 end)
 
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
@@ -635,6 +869,64 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEv
 		if not sprinting then
 			sprinting = true
 			setSprintingEvent:FireServer(true)
+		end
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.G then
+		local firstItem = currentInventory[1]
+		if firstItem then
+			requestDropLootEvent:FireServer({
+				lootId = firstItem,
+			})
+		end
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.F then
+		local firstItem = currentInventory[1]
+		if firstItem then
+			requestUseItemEvent:FireServer({
+				lootId = firstItem,
+			})
+			return
+		end
+	end
+
+	if input.KeyCode == Enum.KeyCode.X then
+		requestExtractEvent:FireServer()
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.T then
+		local doorId = getNearestDoorId(12)
+		if doorId then
+			requestInteractEvent:FireServer({
+				interactionId = "open_door",
+				objectId = doorId,
+			})
+		end
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.Q then
+		local doorId = getNearestDoorId(12)
+		if doorId then
+			requestSabotageEvent:FireServer({
+				interactionId = "lock_door",
+				objectId = doorId,
+			})
+		end
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.C then
+		local zoneId = getNearestZoneId(20)
+		if zoneId then
+			requestSabotageEvent:FireServer({
+				interactionId = "cut_power",
+				objectId = zoneId,
+			})
 		end
 	end
 end)

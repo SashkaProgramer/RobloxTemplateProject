@@ -1,6 +1,12 @@
 --!strict
 
 local GameConfig = {
+	FeatureFlags = {
+		UseHospitalWorld = true,
+		EnableLegacyWorld = false,
+		EnableLegacyInfected = false,
+		EnableLegacyCombat = false,
+	},
 	Player = {
 		DisplayName = "Survivor",
 		MaxStamina = 1000,

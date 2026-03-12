@@ -27,6 +27,10 @@
 - For design, retention, virality, or monetization tasks, also evaluate product risks, exploit risks, onboarding friction, and implementation cost.
 - Challenge weak ideas directly when needed, but keep feedback concrete and actionable.
 
+## Git Workflow
+
+- After completing requested code changes, commit them and push the current branch unless I explicitly say not to push.
+
 ## Product Strategy Mode
 
 - If my request is specifically about game design, monetization, retention, virality, Roblox market fit, or product strategy, also use `Docs/ProductStrategyPrompt.md`.
