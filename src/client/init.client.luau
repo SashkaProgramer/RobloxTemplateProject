@@ -214,19 +214,18 @@ resultScoreboardTitle.TextColor3 = Color3.fromRGB(206, 214, 224)
 resultScoreboardTitle.Text = "Raid Outcomes"
 resultScoreboardTitle.Parent = resultPanel
 
-local resultScoreboardLabel = Instance.new("TextLabel")
-resultScoreboardLabel.Name = "Scoreboard"
-resultScoreboardLabel.BackgroundTransparency = 1
-resultScoreboardLabel.Size = UDim2.fromOffset(320, 62)
-resultScoreboardLabel.Position = UDim2.fromOffset(20, 186)
-resultScoreboardLabel.Font = Enum.Font.Gotham
-resultScoreboardLabel.TextSize = 13
-resultScoreboardLabel.TextWrapped = true
-resultScoreboardLabel.TextXAlignment = Enum.TextXAlignment.Left
-resultScoreboardLabel.TextYAlignment = Enum.TextYAlignment.Top
-resultScoreboardLabel.TextColor3 = Color3.fromRGB(184, 193, 205)
-resultScoreboardLabel.Text = ""
-resultScoreboardLabel.Parent = resultPanel
+local resultScoreboardFrame = Instance.new("Frame")
+resultScoreboardFrame.Name = "Scoreboard"
+resultScoreboardFrame.BackgroundTransparency = 1
+resultScoreboardFrame.Size = UDim2.fromOffset(320, 62)
+resultScoreboardFrame.Position = UDim2.fromOffset(20, 186)
+resultScoreboardFrame.Parent = resultPanel
+
+local resultScoreboardLayout = Instance.new("UIListLayout")
+resultScoreboardLayout.FillDirection = Enum.FillDirection.Vertical
+resultScoreboardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+resultScoreboardLayout.Padding = UDim.new(0, 6)
+resultScoreboardLayout.Parent = resultScoreboardFrame
 
 local hpFrame = Instance.new("Frame")
 hpFrame.Name = "HpFrame"
@@ -425,24 +424,85 @@ local currentZoneId = "--"
 local currentObjectivesCompleted = 0
 local currentObjectivesRequired = 0
 local currentResultReasonText = ""
-local currentResultScoreboardText = ""
+local currentResultScoreEntries: { any } = {}
+
+local function clearScoreboardRows()
+	for _, child in resultScoreboardFrame:GetChildren() do
+		if child:IsA("Frame") and child.Name == "ScoreRow" then
+			child:Destroy()
+		end
+	end
+end
+
+local function rebuildScoreboardRows()
+	clearScoreboardRows()
+
+	for index, entry in currentResultScoreEntries do
+		if index > 4 then
+			break
+		end
+
+		if typeof(entry) ~= "table" then
+			continue
+		end
+
+		local didExtract = entry.didExtract == true
+		local securedValue = math.max(0, tonumber(entry.securedValue) or 0)
+		local carriedValue = math.max(0, tonumber(entry.carriedValue) or 0)
+		local playerName = tostring(entry.name or "Unknown")
+
+		local row = Instance.new("Frame")
+		row.Name = "ScoreRow"
+		row.BackgroundColor3 = if didExtract then Color3.fromRGB(26, 52, 38) else Color3.fromRGB(58, 29, 29)
+		row.BackgroundTransparency = 0.18
+		row.BorderSizePixel = 0
+		row.Size = UDim2.new(1, 0, 0, 18)
+		row.Parent = resultScoreboardFrame
+
+		local rowCorner = Instance.new("UICorner")
+		rowCorner.CornerRadius = UDim.new(0, 6)
+		rowCorner.Parent = row
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Size = UDim2.new(0.58, 0, 1, 0)
+		nameLabel.Position = UDim2.fromOffset(8, 0)
+		nameLabel.Font = Enum.Font.GothamMedium
+		nameLabel.TextSize = 12
+		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+		nameLabel.TextColor3 = Color3.fromRGB(232, 236, 242)
+		nameLabel.Text = playerName
+		nameLabel.Parent = row
+
+		local statusLabel = Instance.new("TextLabel")
+		statusLabel.BackgroundTransparency = 1
+		statusLabel.Size = UDim2.new(0.42, -8, 1, 0)
+		statusLabel.Position = UDim2.new(0.58, 0, 0, 0)
+		statusLabel.Font = Enum.Font.GothamBold
+		statusLabel.TextSize = 12
+		statusLabel.TextXAlignment = Enum.TextXAlignment.Right
+		statusLabel.TextColor3 = if didExtract then Color3.fromRGB(139, 222, 157) else Color3.fromRGB(240, 144, 144)
+		statusLabel.Text = if didExtract
+			then ("EXTRACTED %d"):format(securedValue)
+			else ("FAILED %d"):format(carriedValue)
+		statusLabel.Parent = row
+	end
+end
 
 local function hideResultPanel()
 	resultPanel.Visible = false
 	resultSummary.Text = ""
 	resultValueLabel.Text = ""
 	resultReasonLabel.Text = ""
-	resultScoreboardLabel.Text = ""
 	currentResultReasonText = ""
-	currentResultScoreboardText = ""
+	table.clear(currentResultScoreEntries)
+	clearScoreboardRows()
 end
 
 local function refreshResultPanelStatus()
 	if not resultPanel.Visible then
 		return
 	end
-
-	resultScoreboardLabel.Text = currentResultScoreboardText
 
 	if currentRoundPhase == "Resolved" then
 		local suffix = ("Next raid in %ds"):format(math.max(0, currentRoundTimeRemaining))
@@ -697,41 +757,25 @@ local function formatMatchLossReason(lossReason: string?): string
 	return "loot was lost"
 end
 
-local function formatScoreboardEntry(entry: any): string?
-	if typeof(entry) ~= "table" then
-		return nil
-	end
+local function setScoreboardEntries(allResults: any)
+	table.clear(currentResultScoreEntries)
 
-	local name = tostring(entry.name or "Unknown")
-	local didExtract = entry.didExtract == true
-	local securedValue = math.max(0, tonumber(entry.securedValue) or 0)
-	local carriedValue = math.max(0, tonumber(entry.carriedValue) or 0)
-
-	if didExtract then
-		return ("%s: extracted (%d)"):format(name, securedValue)
-	end
-
-	return ("%s: failed (%d)"):format(name, carriedValue)
-end
-
-local function buildScoreboardText(allResults: any): string
 	if typeof(allResults) ~= "table" then
-		return ""
+		rebuildScoreboardRows()
+		return
 	end
 
-	local lines = {}
 	for index, entry in allResults do
 		if index > 4 then
 			break
 		end
 
-		local line = formatScoreboardEntry(entry)
-		if line then
-			table.insert(lines, line)
+		if typeof(entry) == "table" then
+			table.insert(currentResultScoreEntries, entry)
 		end
 	end
 
-	return table.concat(lines, "\n")
+	rebuildScoreboardRows()
 end
 
 local function formatLocalMatchSummaryToast(localResult: any, roundReason: string?): string?
@@ -786,7 +830,7 @@ local function presentLocalMatchSummary(localResult: any, allResults: any, round
 		lossReason = nil
 	end
 
-	currentResultScoreboardText = buildScoreboardText(allResults)
+	setScoreboardEntries(allResults)
 
 	if didExtract then
 		showResultPanel(

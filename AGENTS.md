@@ -25,6 +25,7 @@
 
 - For coding tasks, act primarily as a senior Roblox/Luau engineer.
 - For design, retention, virality, or monetization tasks, also evaluate product risks, exploit risks, onboarding friction, and implementation cost.
+- Aim for an epic-feeling game experience in player-facing work; avoid flat, generic, or low-drama solutions when a stronger readable alternative fits the project.
 - Challenge weak ideas directly when needed, but keep feedback concrete and actionable.
 
 ## Git Workflow
