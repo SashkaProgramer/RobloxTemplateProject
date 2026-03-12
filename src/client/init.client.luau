@@ -4,6 +4,8 @@ local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -130,6 +132,15 @@ local toastCorner = Instance.new("UICorner")
 toastCorner.CornerRadius = UDim.new(0, 8)
 toastCorner.Parent = toast
 
+local resultFlash = Instance.new("Frame")
+resultFlash.Name = "ResultFlash"
+resultFlash.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+resultFlash.BackgroundTransparency = 1
+resultFlash.BorderSizePixel = 0
+resultFlash.Size = UDim2.fromScale(1, 1)
+resultFlash.ZIndex = 20
+resultFlash.Parent = screenGui
+
 local resultPanel = Instance.new("Frame")
 resultPanel.Name = "ResultPanel"
 resultPanel.Visible = false
@@ -139,6 +150,10 @@ resultPanel.Size = UDim2.fromOffset(360, 252)
 resultPanel.AnchorPoint = Vector2.new(0.5, 0.5)
 resultPanel.Position = UDim2.fromScale(0.5, 0.34)
 resultPanel.Parent = screenGui
+
+local resultPanelScale = Instance.new("UIScale")
+resultPanelScale.Scale = 1
+resultPanelScale.Parent = resultPanel
 
 local resultPanelCorner = Instance.new("UICorner")
 resultPanelCorner.CornerRadius = UDim.new(0, 10)
@@ -260,6 +275,20 @@ resultScoreboardLayout.FillDirection = Enum.FillDirection.Vertical
 resultScoreboardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 resultScoreboardLayout.Padding = UDim.new(0, 6)
 resultScoreboardLayout.Parent = resultScoreboardFrame
+
+local successResultSound = Instance.new("Sound")
+successResultSound.Name = "SuccessResultSound"
+successResultSound.SoundId = "rbxassetid://127645268874265"
+successResultSound.Volume = 0.55
+successResultSound.PlaybackSpeed = 1
+successResultSound.Parent = SoundService
+
+local failResultSound = Instance.new("Sound")
+failResultSound.Name = "FailResultSound"
+failResultSound.SoundId = "rbxassetid://127645268874265"
+failResultSound.Volume = 0.42
+failResultSound.PlaybackSpeed = 0.78
+failResultSound.Parent = SoundService
 
 local hpFrame = Instance.new("Frame")
 hpFrame.Name = "HpFrame"
@@ -460,6 +489,7 @@ local currentObjectivesRequired = 0
 local currentResultReasonText = ""
 local currentResultScoreEntries: { any } = {}
 local currentResultCalloutText = ""
+local resultPresentationToken = 0
 
 local function clearScoreboardRows()
 	for _, child in resultScoreboardFrame:GetChildren() do
@@ -550,7 +580,13 @@ local function rebuildScoreboardRows()
 end
 
 local function hideResultPanel()
+	resultPresentationToken += 1
 	resultPanel.Visible = false
+	resultFlash.BackgroundTransparency = 1
+	resultPanelScale.Scale = 1
+	resultPanel.BackgroundTransparency = 0.12
+	resultPanel.Position = UDim2.fromScale(0.5, 0.34)
+	resultPanelStroke.Thickness = 1.5
 	resultHeroBadge.Text = "OUTCOME"
 	resultHeroBadge.BackgroundColor3 = Color3.fromRGB(62, 74, 90)
 	resultSummary.Text = ""
@@ -561,6 +597,80 @@ local function hideResultPanel()
 	currentResultCalloutText = ""
 	table.clear(currentResultScoreEntries)
 	clearScoreboardRows()
+end
+
+local function playResultPresentation(didExtract: boolean)
+	resultPresentationToken += 1
+	local token = resultPresentationToken
+
+	local accentColor = if didExtract then Color3.fromRGB(126, 214, 148) else Color3.fromRGB(224, 116, 116)
+	local flashColor = if didExtract then Color3.fromRGB(187, 255, 201) else Color3.fromRGB(255, 198, 198)
+	local startPosition = UDim2.new(0.5, 0, 0.31, 0)
+	local finalPosition = UDim2.new(0.5, 0, 0.34, 0)
+
+	resultPanel.Visible = true
+	resultPanel.Position = startPosition
+	resultPanel.BackgroundTransparency = 0.32
+	resultPanelScale.Scale = 0.94
+	resultPanelStroke.Thickness = 2.6
+	resultFlash.BackgroundColor3 = flashColor
+	resultFlash.BackgroundTransparency = 0.78
+
+	local panelTween = TweenService:Create(
+		resultPanel,
+		TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Position = finalPosition,
+			BackgroundTransparency = 0.12,
+		}
+	)
+	local scaleTween = TweenService:Create(
+		resultPanelScale,
+		TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{
+			Scale = 1,
+		}
+	)
+	local strokeTween = TweenService:Create(
+		resultPanelStroke,
+		TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{
+			Color = accentColor,
+			Thickness = 1.5,
+		}
+	)
+	local flashTween = TweenService:Create(
+		resultFlash,
+		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{
+			BackgroundTransparency = 1,
+		}
+	)
+
+	panelTween:Play()
+	scaleTween:Play()
+	strokeTween:Play()
+	flashTween:Play()
+
+	local sound = if didExtract then successResultSound else failResultSound
+	sound.TimePosition = 0
+	sound:Play()
+
+	task.delay(0.65, function()
+		if token ~= resultPresentationToken then
+			return
+		end
+
+		local settleTween = TweenService:Create(
+			resultPanelStroke,
+			TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+			{
+				Color = Color3.fromRGB(92, 108, 124),
+				Transparency = 0.35,
+			}
+		)
+		settleTween:Play()
+	end)
 end
 
 local function refreshResultPanelStatus()
@@ -926,7 +1036,6 @@ local function showResultPanel(titleText: string, summaryText: string, valueText
 	currentResultReasonText = reasonText or ""
 	resultValueLabel.TextColor3 = accentColor
 	resultPanelStroke.Color = accentColor
-	resultPanel.Visible = true
 	refreshResultPanelStatus()
 end
 
@@ -956,6 +1065,7 @@ local function presentLocalMatchSummary(localResult: any, allResults: any, round
 			if roundReason == "ExtractionFull" then "The last extraction slot was claimed with your escape." else nil,
 			Color3.fromRGB(120, 198, 142)
 		)
+		playResultPresentation(true)
 	else
 		resultHeroBadge.Text = "FAILED"
 		resultHeroBadge.BackgroundColor3 = Color3.fromRGB(160, 76, 76)
@@ -969,6 +1079,7 @@ local function presentLocalMatchSummary(localResult: any, allResults: any, round
 			("Loss Reason: %s"):format(reasonText),
 			Color3.fromRGB(214, 108, 108)
 		)
+		playResultPresentation(false)
 	end
 
 	return formatLocalMatchSummaryToast(localResult, roundReason)
