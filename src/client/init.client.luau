@@ -153,14 +153,31 @@ resultPanelStroke.Parent = resultPanel
 local resultTitle = Instance.new("TextLabel")
 resultTitle.Name = "Title"
 resultTitle.BackgroundTransparency = 1
-resultTitle.Size = UDim2.fromOffset(320, 28)
-resultTitle.Position = UDim2.fromOffset(20, 16)
+resultTitle.Size = UDim2.fromOffset(220, 28)
+resultTitle.Position = UDim2.fromOffset(20, 14)
 resultTitle.Font = Enum.Font.GothamBold
 resultTitle.TextSize = 20
 resultTitle.TextXAlignment = Enum.TextXAlignment.Left
 resultTitle.TextColor3 = Color3.fromRGB(236, 240, 245)
 resultTitle.Text = "Raid Result"
 resultTitle.Parent = resultPanel
+
+local resultHeroBadge = Instance.new("TextLabel")
+resultHeroBadge.Name = "HeroBadge"
+resultHeroBadge.BackgroundColor3 = Color3.fromRGB(62, 74, 90)
+resultHeroBadge.BackgroundTransparency = 0.08
+resultHeroBadge.Size = UDim2.fromOffset(96, 24)
+resultHeroBadge.Position = UDim2.fromOffset(244, 16)
+resultHeroBadge.Font = Enum.Font.GothamBold
+resultHeroBadge.TextSize = 12
+resultHeroBadge.TextXAlignment = Enum.TextXAlignment.Center
+resultHeroBadge.TextColor3 = Color3.fromRGB(236, 240, 245)
+resultHeroBadge.Text = "OUTCOME"
+resultHeroBadge.Parent = resultPanel
+
+local resultHeroBadgeCorner = Instance.new("UICorner")
+resultHeroBadgeCorner.CornerRadius = UDim.new(0, 8)
+resultHeroBadgeCorner.Parent = resultHeroBadge
 
 local resultSummary = Instance.new("TextLabel")
 resultSummary.Name = "Summary"
@@ -450,34 +467,59 @@ local function rebuildScoreboardRows()
 		local securedValue = math.max(0, tonumber(entry.securedValue) or 0)
 		local carriedValue = math.max(0, tonumber(entry.carriedValue) or 0)
 		local playerName = tostring(entry.name or "Unknown")
+		local userId = tonumber(entry.userId) or 0
+		local isLocalPlayer = userId == player.UserId
 
 		local row = Instance.new("Frame")
 		row.Name = "ScoreRow"
-		row.BackgroundColor3 = if didExtract then Color3.fromRGB(26, 52, 38) else Color3.fromRGB(58, 29, 29)
-		row.BackgroundTransparency = 0.18
+		row.BackgroundColor3 = if isLocalPlayer
+			then (if didExtract then Color3.fromRGB(42, 78, 56) else Color3.fromRGB(88, 42, 42))
+			else (if didExtract then Color3.fromRGB(26, 52, 38) else Color3.fromRGB(58, 29, 29))
+		row.BackgroundTransparency = if isLocalPlayer then 0.04 else 0.18
 		row.BorderSizePixel = 0
-		row.Size = UDim2.new(1, 0, 0, 18)
+		row.Size = UDim2.new(1, 0, 0, 22)
 		row.Parent = resultScoreboardFrame
 
 		local rowCorner = Instance.new("UICorner")
 		rowCorner.CornerRadius = UDim.new(0, 6)
 		rowCorner.Parent = row
 
+		local rowStroke = Instance.new("UIStroke")
+		rowStroke.Thickness = if isLocalPlayer then 1.2 else 1
+		rowStroke.Transparency = if isLocalPlayer then 0.08 else 0.55
+		rowStroke.Color = if didExtract then Color3.fromRGB(135, 214, 154) else Color3.fromRGB(234, 138, 138)
+		rowStroke.Parent = row
+
+		local badgeLabel = Instance.new("TextLabel")
+		badgeLabel.BackgroundColor3 = if didExtract then Color3.fromRGB(84, 148, 102) else Color3.fromRGB(172, 82, 82)
+		badgeLabel.BackgroundTransparency = 0.04
+		badgeLabel.Size = UDim2.fromOffset(28, 14)
+		badgeLabel.Position = UDim2.fromOffset(6, 4)
+		badgeLabel.Font = Enum.Font.GothamBold
+		badgeLabel.TextSize = 8
+		badgeLabel.TextColor3 = Color3.fromRGB(248, 248, 248)
+		badgeLabel.Text = if didExtract then "EVAC" else "DOWN"
+		badgeLabel.Parent = row
+
+		local badgeCorner = Instance.new("UICorner")
+		badgeCorner.CornerRadius = UDim.new(0, 4)
+		badgeCorner.Parent = badgeLabel
+
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
-		nameLabel.Size = UDim2.new(0.58, 0, 1, 0)
-		nameLabel.Position = UDim2.fromOffset(8, 0)
-		nameLabel.Font = Enum.Font.GothamMedium
+		nameLabel.Size = UDim2.new(0.5, 0, 1, 0)
+		nameLabel.Position = UDim2.fromOffset(40, 0)
+		nameLabel.Font = if isLocalPlayer then Enum.Font.GothamBold else Enum.Font.GothamMedium
 		nameLabel.TextSize = 12
 		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nameLabel.TextColor3 = Color3.fromRGB(232, 236, 242)
-		nameLabel.Text = playerName
+		nameLabel.TextColor3 = if isLocalPlayer then Color3.fromRGB(248, 250, 252) else Color3.fromRGB(232, 236, 242)
+		nameLabel.Text = if isLocalPlayer then (playerName .. " (YOU)") else playerName
 		nameLabel.Parent = row
 
 		local statusLabel = Instance.new("TextLabel")
 		statusLabel.BackgroundTransparency = 1
-		statusLabel.Size = UDim2.new(0.42, -8, 1, 0)
-		statusLabel.Position = UDim2.new(0.58, 0, 0, 0)
+		statusLabel.Size = UDim2.new(0.5, -8, 1, 0)
+		statusLabel.Position = UDim2.new(0.5, 0, 0, 0)
 		statusLabel.Font = Enum.Font.GothamBold
 		statusLabel.TextSize = 12
 		statusLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -491,6 +533,8 @@ end
 
 local function hideResultPanel()
 	resultPanel.Visible = false
+	resultHeroBadge.Text = "OUTCOME"
+	resultHeroBadge.BackgroundColor3 = Color3.fromRGB(62, 74, 90)
 	resultSummary.Text = ""
 	resultValueLabel.Text = ""
 	resultReasonLabel.Text = ""
@@ -833,6 +877,8 @@ local function presentLocalMatchSummary(localResult: any, allResults: any, round
 	setScoreboardEntries(allResults)
 
 	if didExtract then
+		resultHeroBadge.Text = "EXTRACTED"
+		resultHeroBadge.BackgroundColor3 = Color3.fromRGB(76, 142, 96)
 		showResultPanel(
 			"Raid Result: Extracted",
 			"You secured your carried loot and escaped the hospital.",
@@ -841,6 +887,8 @@ local function presentLocalMatchSummary(localResult: any, allResults: any, round
 			Color3.fromRGB(120, 198, 142)
 		)
 	else
+		resultHeroBadge.Text = "FAILED"
+		resultHeroBadge.BackgroundColor3 = Color3.fromRGB(160, 76, 76)
 		local reasonText = formatMatchLossReason(lossReason)
 		showResultPanel(
 			"Raid Result: Failed",
