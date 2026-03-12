@@ -33,6 +33,9 @@ local extractionOpen = false
 local extractionSlotsRemaining = RoundDefs.Config.extractionSlots
 local loopStarted = false
 local extractedUserIds: { number } = {}
+local phaseChangedListeners: { (RoundPhase, RoundPhase?) -> () } = {}
+local resolvedEarlyReason: string? = nil
+local setPhase: (RoundPhase) -> ()
 
 local function getActivePlayerCount(): number
 	return #Players:GetPlayers()
@@ -96,7 +99,23 @@ local function broadcastExtractionState()
 	extractionStateChangedEvent:FireAllClients(makeExtractionPayload())
 end
 
-local function setPhase(nextPhase: RoundPhase)
+local function notifyPhaseChanged(newPhase: RoundPhase, previousPhase: RoundPhase?)
+	for _, listener in phaseChangedListeners do
+		task.spawn(listener, newPhase, previousPhase)
+	end
+end
+
+local function resolveRound(reason: string?)
+	if currentPhase == RoundDefs.Phases.Resolved or currentPhase == RoundDefs.Phases.Lobby then
+		return
+	end
+
+	resolvedEarlyReason = reason
+	setPhase(RoundDefs.Phases.Resolved)
+end
+
+setPhase = function(nextPhase: RoundPhase)
+	local previousPhase = currentPhase
 	currentPhase = nextPhase
 
 	local duration = RoundDefs.getPhaseDuration(nextPhase)
@@ -110,6 +129,7 @@ local function setPhase(nextPhase: RoundPhase)
 	if nextPhase == RoundDefs.Phases.Preparation then
 		extractionSlotsRemaining = RoundDefs.Config.extractionSlots
 		table.clear(extractedUserIds)
+		resolvedEarlyReason = nil
 	end
 
 	broadcastRoundState()
@@ -122,8 +142,11 @@ local function setPhase(nextPhase: RoundPhase)
 			phase = currentPhase,
 			extractedUserIds = table.clone(extractedUserIds),
 			extractionSlots = RoundDefs.Config.extractionSlots,
+			reason = resolvedEarlyReason,
 		})
 	end
+
+	notifyPhaseChanged(nextPhase, previousPhase)
 end
 
 local function beginNewRound()
@@ -256,7 +279,18 @@ function RoundService.TryRegisterExtraction(player: Player): (boolean, string?)
 	extractionSlotsRemaining -= 1
 	broadcastRoundState()
 	broadcastExtractionState()
+	if extractionSlotsRemaining <= 0 then
+		resolveRound("ExtractionFull")
+	end
 	return true, nil
+end
+
+function RoundService.ResolveCurrentRound(reason: string?)
+	resolveRound(reason)
+end
+
+function RoundService.OnPhaseChanged(listener: (RoundPhase, RoundPhase?) -> ())
+	table.insert(phaseChangedListeners, listener)
 end
 
 return RoundService

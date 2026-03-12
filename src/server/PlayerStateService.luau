@@ -9,6 +9,8 @@ local GameConfig = require(Shared:WaitForChild("GameConfig"))
 local LootDefs = require(Shared:WaitForChild("LootDefs"))
 local Net = require(Shared:WaitForChild("Net"))
 
+local RoundService = require(script.Parent:WaitForChild("RoundService"))
+
 export type PlayerRoundState = {
 	alive: boolean,
 	extracted: boolean,
@@ -41,6 +43,24 @@ local playerRoundStateChangedEvent: RemoteEvent
 local inventoryUpdatedEvent: RemoteEvent
 local accum = 0
 local nameTagGuiName = "PlayerNameTag"
+
+local function evaluateRoundResolution()
+	if RoundService.GetCurrentPhase() ~= "Finale" then
+		return
+	end
+
+	local hasActiveRoundPlayer = false
+	for _, state in states do
+		if state.round.alive and not state.round.extracted then
+			hasActiveRoundPlayer = true
+			break
+		end
+	end
+
+	if not hasActiveRoundPlayer then
+		RoundService.ResolveCurrentRound("NoActivePlayersRemaining")
+	end
+end
 
 local function getHumanoid(player: Player): Humanoid?
 	local character = player.Character
@@ -305,6 +325,7 @@ function PlayerStateService.SetAlive(player: Player, isAlive: boolean)
 	applyMoveSpeed(player, state)
 	pushLegacyState(player)
 	pushRoundState(player)
+	evaluateRoundResolution()
 end
 
 function PlayerStateService.SetExtracted(player: Player, extracted: boolean)
@@ -321,6 +342,7 @@ function PlayerStateService.SetExtracted(player: Player, extracted: boolean)
 	applyMoveSpeed(player, state)
 	pushLegacyState(player)
 	pushRoundState(player)
+	evaluateRoundResolution()
 end
 
 function PlayerStateService.SetCurrentZoneId(player: Player, currentZoneId: string?)
@@ -428,6 +450,13 @@ local function onPlayerAdded(player: Player)
 			applyMoveSpeed(player, state)
 			pushAllState(player)
 		end
+
+		local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
+		if humanoid and humanoid:IsA("Humanoid") then
+			humanoid.Died:Connect(function()
+				PlayerStateService.SetAlive(player, false)
+			end)
+		end
 	end)
 
 	local existingCharacter = player.Character
@@ -446,6 +475,7 @@ end
 
 local function onPlayerRemoving(player: Player)
 	states[player] = nil
+	evaluateRoundResolution()
 end
 
 function PlayerStateService.Start(netFolder: Folder)
@@ -461,6 +491,19 @@ function PlayerStateService.Start(netFolder: Folder)
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end
+
+	RoundService.OnPhaseChanged(function(newPhase: string)
+		if newPhase ~= "Preparation" then
+			return
+		end
+
+		for player, state in states do
+			state.round = createRoundState()
+			state.legacy.isSprinting = false
+			applyMoveSpeed(player, state)
+			pushAllState(player)
+		end
+	end)
 
 	RunService.Heartbeat:Connect(function(dt: number)
 		accum += dt
