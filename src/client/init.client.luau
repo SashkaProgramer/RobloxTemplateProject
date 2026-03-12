@@ -398,12 +398,32 @@ local localPlayerExtracted = false
 local currentZoneId = "--"
 local currentObjectivesCompleted = 0
 local currentObjectivesRequired = 0
+local currentResultReasonText = ""
 
 local function hideResultPanel()
 	resultPanel.Visible = false
 	resultSummary.Text = ""
 	resultValueLabel.Text = ""
 	resultReasonLabel.Text = ""
+	currentResultReasonText = ""
+end
+
+local function refreshResultPanelStatus()
+	if not resultPanel.Visible then
+		return
+	end
+
+	if currentRoundPhase == "Resolved" then
+		local suffix = ("Next raid in %ds"):format(math.max(0, currentRoundTimeRemaining))
+		if currentResultReasonText ~= "" then
+			resultReasonLabel.Text = ("%s | %s"):format(currentResultReasonText, suffix)
+		else
+			resultReasonLabel.Text = suffix
+		end
+		return
+	end
+
+	resultReasonLabel.Text = currentResultReasonText
 end
 
 local function refreshRoundHud()
@@ -428,6 +448,7 @@ local function refreshRoundHud()
 
 	zoneLabel.Text = ("Zone: %s"):format(currentZoneId)
 	objectiveLabel.Text = ("Objectives: %d/%d"):format(currentObjectivesCompleted, currentObjectivesRequired)
+	refreshResultPanelStatus()
 end
 
 local function getCharacterRoot(): BasePart?
@@ -677,10 +698,11 @@ local function showResultPanel(titleText: string, summaryText: string, valueText
 	resultTitle.Text = titleText
 	resultSummary.Text = summaryText
 	resultValueLabel.Text = valueText
-	resultReasonLabel.Text = reasonText or ""
+	currentResultReasonText = reasonText or ""
 	resultValueLabel.TextColor3 = accentColor
 	resultPanelStroke.Color = accentColor
 	resultPanel.Visible = true
+	refreshResultPanelStatus()
 end
 
 local function presentLocalMatchSummary(localResult: any, roundReason: string?): string?
