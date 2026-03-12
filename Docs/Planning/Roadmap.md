@@ -6,10 +6,11 @@
 - Add `RoundService`
 - Establish server-side round flow
 
-## Phase 2: Train Slice
+## Phase 2: Hospital Slice
 
-- Build a small train route
-- Implement doors and car transitions
+- Build a small hospital route
+- Use a modular hospital kit plan for reusable rooms and landmarks
+- Implement doors and zone transitions
 - Add interactive power and objective points
 
 ## Phase 3: Run Systems

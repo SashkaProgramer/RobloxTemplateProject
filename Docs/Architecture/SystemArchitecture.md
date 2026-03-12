@@ -13,7 +13,7 @@ The project should follow a server-authoritative match architecture.
 - `RoundService`
   - owns match phases, timers, start/end, extraction resolution
 - `WorldService`
-  - owns train cars, doors, power states, interactive objects
+  - owns hospital zones, doors, power states, interactive objects
 - `LootService`
   - owns loot definitions, spawn points, pickup/drop validation, loot valuation
 - `PlayerStateService`
@@ -32,6 +32,10 @@ The project should follow a server-authoritative match architecture.
 - `RoundDefs`
 - `LootDefs`
 - `InteractionDefs`
+
+## World Building Reference
+
+- Use `Docs/Architecture/ModularHospitalKit.md` as the reference for replacing placeholder hospital boxes with a modular authored hospital kit.
 
 ## Architecture Principles
 
