@@ -318,3 +318,5 @@ Then assemble the MVP route before adding more rooms.
 ## Retrieval Note
 
 If a future chat asks about the modular hospital kit, use this file as the primary project reference before proposing world-building changes.
+
+For actual Studio assembly of the first building, use `Docs/Architecture/HospitalStudioBuildGuide.md`.
