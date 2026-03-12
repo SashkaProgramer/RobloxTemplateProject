@@ -182,7 +182,7 @@ resultHeroBadgeCorner.Parent = resultHeroBadge
 local resultSummary = Instance.new("TextLabel")
 resultSummary.Name = "Summary"
 resultSummary.BackgroundTransparency = 1
-resultSummary.Size = UDim2.fromOffset(320, 42)
+resultSummary.Size = UDim2.fromOffset(320, 34)
 resultSummary.Position = UDim2.fromOffset(20, 50)
 resultSummary.Font = Enum.Font.GothamMedium
 resultSummary.TextWrapped = true
@@ -193,11 +193,28 @@ resultSummary.TextColor3 = Color3.fromRGB(214, 221, 228)
 resultSummary.Text = ""
 resultSummary.Parent = resultPanel
 
+local resultCallout = Instance.new("TextLabel")
+resultCallout.Name = "Callout"
+resultCallout.BackgroundColor3 = Color3.fromRGB(44, 52, 64)
+resultCallout.BackgroundTransparency = 0.08
+resultCallout.Size = UDim2.fromOffset(320, 24)
+resultCallout.Position = UDim2.fromOffset(20, 84)
+resultCallout.Font = Enum.Font.GothamBold
+resultCallout.TextSize = 12
+resultCallout.TextXAlignment = Enum.TextXAlignment.Left
+resultCallout.TextColor3 = Color3.fromRGB(239, 230, 188)
+resultCallout.Text = ""
+resultCallout.Parent = resultPanel
+
+local resultCalloutCorner = Instance.new("UICorner")
+resultCalloutCorner.CornerRadius = UDim.new(0, 7)
+resultCalloutCorner.Parent = resultCallout
+
 local resultValueLabel = Instance.new("TextLabel")
 resultValueLabel.Name = "Value"
 resultValueLabel.BackgroundTransparency = 1
 resultValueLabel.Size = UDim2.fromOffset(320, 24)
-resultValueLabel.Position = UDim2.fromOffset(20, 102)
+resultValueLabel.Position = UDim2.fromOffset(20, 114)
 resultValueLabel.Font = Enum.Font.GothamBold
 resultValueLabel.TextSize = 17
 resultValueLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -209,7 +226,7 @@ local resultReasonLabel = Instance.new("TextLabel")
 resultReasonLabel.Name = "Reason"
 resultReasonLabel.BackgroundTransparency = 1
 resultReasonLabel.Size = UDim2.fromOffset(320, 30)
-resultReasonLabel.Position = UDim2.fromOffset(20, 130)
+resultReasonLabel.Position = UDim2.fromOffset(20, 140)
 resultReasonLabel.Font = Enum.Font.Gotham
 resultReasonLabel.TextWrapped = true
 resultReasonLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -223,7 +240,7 @@ local resultScoreboardTitle = Instance.new("TextLabel")
 resultScoreboardTitle.Name = "ScoreboardTitle"
 resultScoreboardTitle.BackgroundTransparency = 1
 resultScoreboardTitle.Size = UDim2.fromOffset(320, 20)
-resultScoreboardTitle.Position = UDim2.fromOffset(20, 164)
+resultScoreboardTitle.Position = UDim2.fromOffset(20, 174)
 resultScoreboardTitle.Font = Enum.Font.GothamBold
 resultScoreboardTitle.TextSize = 14
 resultScoreboardTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -235,7 +252,7 @@ local resultScoreboardFrame = Instance.new("Frame")
 resultScoreboardFrame.Name = "Scoreboard"
 resultScoreboardFrame.BackgroundTransparency = 1
 resultScoreboardFrame.Size = UDim2.fromOffset(320, 62)
-resultScoreboardFrame.Position = UDim2.fromOffset(20, 186)
+resultScoreboardFrame.Position = UDim2.fromOffset(20, 196)
 resultScoreboardFrame.Parent = resultPanel
 
 local resultScoreboardLayout = Instance.new("UIListLayout")
@@ -442,6 +459,7 @@ local currentObjectivesCompleted = 0
 local currentObjectivesRequired = 0
 local currentResultReasonText = ""
 local currentResultScoreEntries: { any } = {}
+local currentResultCalloutText = ""
 
 local function clearScoreboardRows()
 	for _, child in resultScoreboardFrame:GetChildren() do
@@ -536,9 +554,11 @@ local function hideResultPanel()
 	resultHeroBadge.Text = "OUTCOME"
 	resultHeroBadge.BackgroundColor3 = Color3.fromRGB(62, 74, 90)
 	resultSummary.Text = ""
+	resultCallout.Text = ""
 	resultValueLabel.Text = ""
 	resultReasonLabel.Text = ""
 	currentResultReasonText = ""
+	currentResultCalloutText = ""
 	table.clear(currentResultScoreEntries)
 	clearScoreboardRows()
 end
@@ -558,6 +578,7 @@ local function refreshResultPanelStatus()
 		return
 	end
 
+	resultCallout.Text = currentResultCalloutText
 	resultReasonLabel.Text = currentResultReasonText
 end
 
@@ -822,6 +843,54 @@ local function setScoreboardEntries(allResults: any)
 	rebuildScoreboardRows()
 end
 
+local function buildResultCallout(allResults: any): string
+	if typeof(allResults) ~= "table" then
+		return ""
+	end
+
+	local extractedCount = 0
+	local topExtractorName: string? = nil
+	local topExtractorValue = -1
+	local biggestLossName: string? = nil
+	local biggestLossValue = -1
+
+	for _, entry in allResults do
+		if typeof(entry) ~= "table" then
+			continue
+		end
+
+		local name = tostring(entry.name or "Unknown")
+		local didExtract = entry.didExtract == true
+		local securedValue = math.max(0, tonumber(entry.securedValue) or 0)
+		local carriedValue = math.max(0, tonumber(entry.carriedValue) or 0)
+
+		if didExtract then
+			extractedCount += 1
+			if securedValue > topExtractorValue then
+				topExtractorValue = securedValue
+				topExtractorName = name
+			end
+		elseif carriedValue > biggestLossValue then
+			biggestLossValue = carriedValue
+			biggestLossName = name
+		end
+	end
+
+	if extractedCount == 1 and topExtractorName then
+		return ("LAST SURVIVOR  %s escaped alone"):format(topExtractorName)
+	end
+
+	if topExtractorName and topExtractorValue > 0 then
+		return ("MVP EXTRACT  %s secured %d value"):format(topExtractorName, topExtractorValue)
+	end
+
+	if biggestLossName and biggestLossValue > 0 then
+		return ("BIGGEST LOSS  %s dropped %d value"):format(biggestLossName, biggestLossValue)
+	end
+
+	return "RAID COMPLETE  No secured loot this round"
+end
+
 local function formatLocalMatchSummaryToast(localResult: any, roundReason: string?): string?
 	if typeof(localResult) ~= "table" then
 		return nil
@@ -875,6 +944,7 @@ local function presentLocalMatchSummary(localResult: any, allResults: any, round
 	end
 
 	setScoreboardEntries(allResults)
+	currentResultCalloutText = buildResultCallout(allResults)
 
 	if didExtract then
 		resultHeroBadge.Text = "EXTRACTED"
