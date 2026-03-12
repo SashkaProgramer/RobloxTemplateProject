@@ -41,6 +41,15 @@ type MatchSummaryPayload = {
 	lossReason: string?,
 }
 
+type MatchScoreEntry = {
+	userId: number,
+	name: string,
+	didExtract: boolean,
+	carriedValue: number,
+	securedValue: number,
+	lossReason: string?,
+}
+
 local PlayerStateService = {}
 
 local states: { [Player]: PlayerState } = {}
@@ -315,6 +324,40 @@ local function buildMatchSummary(player: Player, roundReason: string?): MatchSum
 	}
 end
 
+local function buildMatchScoreboard(roundReason: string?): { MatchScoreEntry }
+	local results = {}
+
+	for player in states do
+		local summary = buildMatchSummary(player, roundReason)
+		table.insert(results, {
+			userId = player.UserId,
+			name = if player.DisplayName ~= "" then player.DisplayName else player.Name,
+			didExtract = summary.didExtract,
+			carriedValue = summary.carriedValue,
+			securedValue = summary.securedValue,
+			lossReason = summary.lossReason,
+		})
+	end
+
+	table.sort(results, function(a: MatchScoreEntry, b: MatchScoreEntry): boolean
+		if a.didExtract ~= b.didExtract then
+			return a.didExtract and not b.didExtract
+		end
+
+		if a.securedValue ~= b.securedValue then
+			return a.securedValue > b.securedValue
+		end
+
+		if a.carriedValue ~= b.carriedValue then
+			return a.carriedValue > b.carriedValue
+		end
+
+		return a.name < b.name
+	end)
+
+	return results
+end
+
 function PlayerStateService.AddScrap(player: Player, amount: number)
 	local state = getOrCreateState(player)
 	if not state then
@@ -537,6 +580,9 @@ function PlayerStateService.Start(netFolder: Folder)
 
 	RoundService.RegisterMatchSummaryProvider(function(player: Player, roundReason: string?): MatchSummaryPayload
 		return buildMatchSummary(player, roundReason)
+	end)
+	RoundService.RegisterMatchScoreboardProvider(function(roundReason: string?): { MatchScoreEntry }
+		return buildMatchScoreboard(roundReason)
 	end)
 
 	RoundService.OnPhaseChanged(function(newPhase: string)

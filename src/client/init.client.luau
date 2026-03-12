@@ -135,7 +135,7 @@ resultPanel.Name = "ResultPanel"
 resultPanel.Visible = false
 resultPanel.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
 resultPanel.BackgroundTransparency = 0.12
-resultPanel.Size = UDim2.fromOffset(360, 170)
+resultPanel.Size = UDim2.fromOffset(360, 252)
 resultPanel.AnchorPoint = Vector2.new(0.5, 0.5)
 resultPanel.Position = UDim2.fromScale(0.5, 0.34)
 resultPanel.Parent = screenGui
@@ -201,6 +201,32 @@ resultReasonLabel.TextSize = 14
 resultReasonLabel.TextColor3 = Color3.fromRGB(163, 172, 184)
 resultReasonLabel.Text = ""
 resultReasonLabel.Parent = resultPanel
+
+local resultScoreboardTitle = Instance.new("TextLabel")
+resultScoreboardTitle.Name = "ScoreboardTitle"
+resultScoreboardTitle.BackgroundTransparency = 1
+resultScoreboardTitle.Size = UDim2.fromOffset(320, 20)
+resultScoreboardTitle.Position = UDim2.fromOffset(20, 164)
+resultScoreboardTitle.Font = Enum.Font.GothamBold
+resultScoreboardTitle.TextSize = 14
+resultScoreboardTitle.TextXAlignment = Enum.TextXAlignment.Left
+resultScoreboardTitle.TextColor3 = Color3.fromRGB(206, 214, 224)
+resultScoreboardTitle.Text = "Raid Outcomes"
+resultScoreboardTitle.Parent = resultPanel
+
+local resultScoreboardLabel = Instance.new("TextLabel")
+resultScoreboardLabel.Name = "Scoreboard"
+resultScoreboardLabel.BackgroundTransparency = 1
+resultScoreboardLabel.Size = UDim2.fromOffset(320, 62)
+resultScoreboardLabel.Position = UDim2.fromOffset(20, 186)
+resultScoreboardLabel.Font = Enum.Font.Gotham
+resultScoreboardLabel.TextSize = 13
+resultScoreboardLabel.TextWrapped = true
+resultScoreboardLabel.TextXAlignment = Enum.TextXAlignment.Left
+resultScoreboardLabel.TextYAlignment = Enum.TextYAlignment.Top
+resultScoreboardLabel.TextColor3 = Color3.fromRGB(184, 193, 205)
+resultScoreboardLabel.Text = ""
+resultScoreboardLabel.Parent = resultPanel
 
 local hpFrame = Instance.new("Frame")
 hpFrame.Name = "HpFrame"
@@ -399,19 +425,24 @@ local currentZoneId = "--"
 local currentObjectivesCompleted = 0
 local currentObjectivesRequired = 0
 local currentResultReasonText = ""
+local currentResultScoreboardText = ""
 
 local function hideResultPanel()
 	resultPanel.Visible = false
 	resultSummary.Text = ""
 	resultValueLabel.Text = ""
 	resultReasonLabel.Text = ""
+	resultScoreboardLabel.Text = ""
 	currentResultReasonText = ""
+	currentResultScoreboardText = ""
 end
 
 local function refreshResultPanelStatus()
 	if not resultPanel.Visible then
 		return
 	end
+
+	resultScoreboardLabel.Text = currentResultScoreboardText
 
 	if currentRoundPhase == "Resolved" then
 		local suffix = ("Next raid in %ds"):format(math.max(0, currentRoundTimeRemaining))
@@ -666,6 +697,43 @@ local function formatMatchLossReason(lossReason: string?): string
 	return "loot was lost"
 end
 
+local function formatScoreboardEntry(entry: any): string?
+	if typeof(entry) ~= "table" then
+		return nil
+	end
+
+	local name = tostring(entry.name or "Unknown")
+	local didExtract = entry.didExtract == true
+	local securedValue = math.max(0, tonumber(entry.securedValue) or 0)
+	local carriedValue = math.max(0, tonumber(entry.carriedValue) or 0)
+
+	if didExtract then
+		return ("%s: extracted (%d)"):format(name, securedValue)
+	end
+
+	return ("%s: failed (%d)"):format(name, carriedValue)
+end
+
+local function buildScoreboardText(allResults: any): string
+	if typeof(allResults) ~= "table" then
+		return ""
+	end
+
+	local lines = {}
+	for index, entry in allResults do
+		if index > 4 then
+			break
+		end
+
+		local line = formatScoreboardEntry(entry)
+		if line then
+			table.insert(lines, line)
+		end
+	end
+
+	return table.concat(lines, "\n")
+end
+
 local function formatLocalMatchSummaryToast(localResult: any, roundReason: string?): string?
 	if typeof(localResult) ~= "table" then
 		return nil
@@ -705,7 +773,7 @@ local function showResultPanel(titleText: string, summaryText: string, valueText
 	refreshResultPanelStatus()
 end
 
-local function presentLocalMatchSummary(localResult: any, roundReason: string?): string?
+local function presentLocalMatchSummary(localResult: any, allResults: any, roundReason: string?): string?
 	if typeof(localResult) ~= "table" then
 		return nil
 	end
@@ -717,6 +785,8 @@ local function presentLocalMatchSummary(localResult: any, roundReason: string?):
 	if typeof(lossReason) ~= "string" then
 		lossReason = nil
 	end
+
+	currentResultScoreboardText = buildScoreboardText(allResults)
 
 	if didExtract then
 		showResultPanel(
@@ -1095,7 +1165,7 @@ matchResultEvent.OnClientEvent:Connect(function(data)
 		reason = nil
 	end
 
-	local panelToast = presentLocalMatchSummary(data.localResult, reason)
+	local panelToast = presentLocalMatchSummary(data.localResult, data.allResults, reason)
 	if panelToast then
 		setToast(panelToast)
 		return

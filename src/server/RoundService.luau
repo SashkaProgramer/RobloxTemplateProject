@@ -26,6 +26,15 @@ type MatchSummaryPayload = {
 	lossReason: string?,
 }
 
+type MatchScoreEntry = {
+	userId: number,
+	name: string,
+	didExtract: boolean,
+	carriedValue: number,
+	securedValue: number,
+	lossReason: string?,
+}
+
 local RoundService = {}
 
 local roundStateChangedEvent: RemoteEvent
@@ -44,6 +53,7 @@ local phaseChangedListeners: { (RoundPhase, RoundPhase?) -> () } = {}
 local resolvedEarlyReason: string? = nil
 local setPhase: (RoundPhase) -> ()
 local matchSummaryProvider: ((Player, string?) -> MatchSummaryPayload)? = nil
+local matchScoreboardProvider: ((string?) -> { MatchScoreEntry })? = nil
 
 local function getActivePlayerCount(): number
 	return #Players:GetPlayers()
@@ -154,6 +164,10 @@ setPhase = function(nextPhase: RoundPhase)
 		}
 
 		if matchSummaryProvider then
+			if matchScoreboardProvider then
+				basePayload.allResults = matchScoreboardProvider(resolvedEarlyReason)
+			end
+
 			for _, player in Players:GetPlayers() do
 				local payload = table.clone(basePayload)
 				payload.localResult = matchSummaryProvider(player, resolvedEarlyReason)
@@ -313,6 +327,10 @@ end
 
 function RoundService.RegisterMatchSummaryProvider(provider: (Player, string?) -> MatchSummaryPayload)
 	matchSummaryProvider = provider
+end
+
+function RoundService.RegisterMatchScoreboardProvider(provider: (string?) -> { MatchScoreEntry })
+	matchScoreboardProvider = provider
 end
 
 return RoundService
